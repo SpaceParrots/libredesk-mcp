@@ -7,6 +7,7 @@ import type { Domain } from "../ops/define.js";
 import { aiKnowledgeDomain } from "./ai-knowledge.js";
 import { articlesDomain } from "./articles.js";
 import { helpCenterDomain } from "./help-center.js";
+import { lookupDomain } from "./lookup.js";
 
 /** Every domain, in the order they appear in `--help` and the tool list. */
-export const DOMAINS: readonly Domain[] = [helpCenterDomain, articlesDomain, aiKnowledgeDomain];
+export const DOMAINS: readonly Domain[] = [helpCenterDomain, articlesDomain, aiKnowledgeDomain, lookupDomain];
