@@ -18,26 +18,26 @@ const SNIPPET_KEYS = ["title", "content", "enabled"] as const;
 
 const PREVIEW_LENGTH = 160;
 
-const snippetId = z.number().int().positive().describe("Numeric id of the snippet. Find it with snippet_list.");
-const suggestionId = z.number().int().positive().describe("Numeric id of the FAQ suggestion. Find it with faq_list.");
+const snippetId = z.number().int().positive().describe("Snippet id.");
+const suggestionId = z.number().int().positive().describe("FAQ suggestion id.");
 
 const snippetTitle = z
   .string()
   .describe(
-    'Title of the snippet. Required, not empty. Write it as the question or topic a customer would ask about, for example "How do I get a refund?". The title is searched together with the content.',
+    'The customer question or topic, for example "How do I get a refund?".',
   );
 const snippetContent = z
   .string()
   .describe(
-    'Plain text body of the snippet. Required, not empty. AI assistants search snippets and quote them, so make each snippet a self-contained answer on one topic: state the answer in full sentences with the details a customer needs (steps, limits, prices, links), and do not rely on other snippets or on surrounding context. A fragment such as "see above" or a bare list of keywords answers nothing.',
+    'Plain text answer, quoted by assistants: self-contained, one topic, full sentences with the details a customer needs (steps, limits, prices, links).',
   );
 const snippetEnabled = z
   .boolean()
-  .describe("Whether AI assistants may use the snippet as an answer source. Disabled snippets are kept but ignored.");
+  .describe("Let AI assistants answer from the snippet.");
 
 const faqStatus = z
   .enum(["pending", "approved", "rejected"])
-  .describe('Only list suggestions with this status: "pending" (not reviewed yet), "approved" or "rejected". Omit for all.');
+  .describe('Only this status; omit for all.');
 
 function asRecords(data: unknown): Record<string, unknown>[] {
   return Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
@@ -66,12 +66,12 @@ async function findSnippet(id: number, call: <T>(method: "GET", path: string) =>
 const snippetList = defineOperation({
   name: "snippet_list",
   group: "snippet",
-  summary: "List the knowledge base snippets AI assistants search, with a short preview of each.",
+  summary: "List the snippets AI assistants search, with a short preview.",
   method: "GET",
   path: "/api/v1/ai/snippets",
   input: {
-    enabled: z.boolean().optional().describe("Only list snippets that are enabled (true) or disabled (false)."),
-    search: z.string().optional().describe("Only list snippets whose title or content contains this text, ignoring case."),
+    enabled: z.boolean().optional().describe("Filter by enabled state."),
+    search: z.string().optional().describe("Only snippets whose title or content contains this text."),
   },
   impact: "read",
   permission: PERMISSION,
@@ -104,7 +104,7 @@ const snippetGet = defineOperation({
 const snippetCreate = defineOperation({
   name: "snippet_create",
   group: "snippet",
-  summary: "Add a snippet to the knowledge base. Write it as a self-contained answer with a clear title.",
+  summary: "Add a snippet: a self-contained answer with a clear title.",
   method: "POST",
   path: "/api/v1/ai/snippets",
   input: { title: snippetTitle, content: snippetContent, enabled: snippetEnabled.default(true) },
@@ -116,7 +116,7 @@ const snippetCreate = defineOperation({
 const snippetUpdate = defineOperation({
   name: "snippet_update",
   group: "snippet",
-  summary: "Change a snippet. Fields you leave out keep their value.",
+  summary: "Change only the given fields of a snippet.",
   method: "PUT",
   path: "/api/v1/ai/snippets/{id}",
   input: { id: snippetId, title: snippetTitle.optional(), content: snippetContent.optional(), enabled: snippetEnabled.optional() },
@@ -138,7 +138,7 @@ const snippetImportUrl = defineOperation({
   method: "POST",
   path: "/api/v1/ai/snippets/import-url",
   input: {
-    url: z.string().describe('Address of the page to import, for example "https://example.com/returns". The LibreDesk server fetches it.'),
+    url: z.string().describe('Page URL; the LibreDesk server fetches it.'),
   },
   impact: "write",
   permission: PERMISSION,
@@ -154,7 +154,7 @@ const snippetDelete = defineOperation({
   input: { id: snippetId },
   positional: ["id"],
   impact: "destructive",
-  effect: "Deletes the snippet. Assistants stop using it.",
+  effect: "Assistants stop using it.",
   permission: PERMISSION,
   undocumented: true,
 });
@@ -162,7 +162,7 @@ const snippetDelete = defineOperation({
 const faqList = defineOperation({
   name: "faq_list",
   group: "faq",
-  summary: "List FAQ suggestions that LibreDesk mined from resolved conversations.",
+  summary: "List FAQ suggestions mined from resolved conversations.",
   method: "GET",
   path: "/api/v1/ai/faq-suggestions",
   input: { status: faqStatus.optional() },
@@ -175,13 +175,13 @@ const faqList = defineOperation({
 const faqApprove = defineOperation({
   name: "faq_approve",
   group: "faq",
-  summary: "Approve a FAQ suggestion: it becomes an enabled snippet. Pass question or answer to edit the text first.",
+  summary: "Approve a FAQ suggestion as an enabled snippet, optionally edited.",
   method: "POST",
   path: "/api/v1/ai/faq-suggestions/{id}/approve",
   input: {
     id: suggestionId,
-    question: z.string().optional().describe("Question to store as the snippet title. Omit to keep the suggested question."),
-    answer: z.string().optional().describe("Answer to store as the snippet content. Omit to keep the suggested answer. Make it self-contained."),
+    question: z.string().optional().describe("Replaces the suggested question."),
+    answer: z.string().optional().describe("Replaces the suggested answer; keep it self-contained."),
   },
   positional: ["id"],
   impact: "write",
@@ -217,7 +217,7 @@ const faqReject = defineOperation({
 const learningGet = defineOperation({
   name: "learning_get",
   group: "learning",
-  summary: "Show whether LibreDesk mines resolved conversations for FAQ suggestions.",
+  summary: "Show whether FAQ learning is on.",
   method: "GET",
   path: "/api/v1/ai/faq-learning",
   input: {},
@@ -229,12 +229,12 @@ const learningGet = defineOperation({
 const learningSet = defineOperation({
   name: "learning_set",
   group: "learning",
-  summary: "Switch FAQ learning from resolved conversations on or off.",
+  summary: "Switch FAQ learning on or off.",
   method: "PUT",
   path: "/api/v1/ai/faq-learning",
-  input: { enabled: z.boolean().describe("True to mine resolved conversations for FAQ suggestions, false to stop.") },
+  input: { enabled: z.boolean().describe("true turns FAQ learning on, false off.") },
   impact: "caution",
-  effect: "Mines resolved conversations with your AI provider, which costs money per conversation.",
+  effect: "Mines resolved conversations with your AI provider, at a cost per conversation.",
   permission: PERMISSION,
   undocumented: true,
 });

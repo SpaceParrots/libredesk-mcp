@@ -12,7 +12,8 @@ import { registerRequest } from "../commands/request.js";
 import { registerStatus } from "../commands/status.js";
 import { BIN_NAME, LIBREDESK_TARGET_VERSION } from "../constants.js";
 import { DOMAINS } from "../domains/index.js";
-import { InputError, LibreDeskError } from "../errors.js";
+import { InputError } from "../errors.js";
+import { startMcpServer } from "../mcp/server.js";
 import { buildCatalog } from "../ops/catalog.js";
 import { addDomainCommands, type CliDeps } from "./domain-commands.js";
 import { runInteractive } from "./interactive.js";
@@ -21,17 +22,12 @@ import { handleCliError } from "./output.js";
 const require = createRequire(import.meta.url);
 const pkg = require("../../package.json") as { version: string };
 
-/** The long-running modes other tasks provide. */
+/** The long-running modes, replaceable in tests. */
 export interface ProgramExtras {
   /** Interactive mode (`ldesk i`). */
   readonly runInteractive?: () => Promise<void>;
-  /** MCP server on stdio (`ldesk serve`). */
+  /** MCP server on stdio (`ldesk serve`). Defaults to {@link startMcpServer}. */
   readonly startServer?: () => Promise<void>;
-}
-
-/** Stand-in until the real mode is wired in. */
-export function notAvailableYet(what: string): () => Promise<void> {
-  return () => Promise.reject(new LibreDeskError(`${what} is not available yet.`, { code: "NOT_AVAILABLE" }));
 }
 
 /** Create the `ldesk` program. Nothing runs until it is parsed. */
@@ -70,7 +66,7 @@ export function createProgram(deps: CliDeps, extras: ProgramExtras = {}): Comman
     .description("Start the MCP server on stdio")
     .action(async () => {
       try {
-        await (extras.startServer ?? notAvailableYet("The MCP server"))();
+        await (extras.startServer ?? startMcpServer)();
       } catch (error) {
         fail(error);
       }

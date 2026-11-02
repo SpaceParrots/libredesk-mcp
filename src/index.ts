@@ -8,8 +8,9 @@ import { pathToFileURL } from "node:url";
 import { clackPrompts, type PromptAdapter } from "./cli/prompt.js";
 import { runInteractive as runMenu } from "./cli/interactive.js";
 import { printResult } from "./cli/output.js";
-import { createProgram, notAvailableYet } from "./cli/program.js";
+import { createProgram } from "./cli/program.js";
 import { DOMAINS } from "./domains/index.js";
+import { startMcpServer } from "./mcp/server.js";
 import { runOperation } from "./ops/run.js";
 
 /** What {@link main} may replace; everything defaults to the real thing. */
@@ -18,7 +19,7 @@ export interface MainDeps {
   readonly prompt?: PromptAdapter;
   /** Interactive mode. Defaults to the clack menu. */
   readonly runInteractive?: () => Promise<void>;
-  /** MCP server. Provided by a later task; defaults to a "not available yet" error. */
+  /** MCP server on stdio. Defaults to {@link startMcpServer}. */
   readonly startServer?: () => Promise<void>;
 }
 
@@ -28,7 +29,7 @@ export interface MainDeps {
  */
 export async function main(argv: readonly string[], deps: MainDeps = {}): Promise<void> {
   const isTTY = deps.isTTY ?? Boolean(process.stdin.isTTY && process.stdout.isTTY);
-  const startServer = deps.startServer ?? notAvailableYet("The MCP server");
+  const startServer = deps.startServer ?? startMcpServer;
   const cli = { isTTY, prompt: deps.prompt ?? clackPrompts, run: runOperation, print: printResult };
   const runInteractive = deps.runInteractive ?? (() => runMenu(DOMAINS, cli));
   if (argv.length <= 2) {
