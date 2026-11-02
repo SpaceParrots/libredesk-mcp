@@ -68,6 +68,12 @@ describe("config transforms", () => {
     expect(() => useProfile(cfg, "nope")).toThrow(ProfileNotFoundError);
     expect(() => useProfile(cfg, "nope")).toThrow(/prod, staging/);
   });
+  it("rejects names inherited from Object.prototype", () => {
+    const cfg = upsertProfile(EMPTY_CONFIG, p("prod"));
+    expect(() => useProfile(cfg, "constructor")).toThrow(ProfileNotFoundError);
+    expect(() => linkProject(cfg, tmpdir(), "toString")).toThrow(ProfileNotFoundError);
+    expect(() => removeProfile(cfg, "valueOf")).toThrow(ProfileNotFoundError);
+  });
   it("linkProject replaces a link for the same path and unlinkProject removes it", () => {
     const cfg = upsertProfile(upsertProfile(EMPTY_CONFIG, p("prod")), p("staging"));
     const linked = linkProject(linkProject(cfg, tmpdir(), "prod"), tmpdir() + "/", "staging");

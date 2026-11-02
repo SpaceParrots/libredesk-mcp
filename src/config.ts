@@ -155,7 +155,7 @@ export function profileNotFound(config: LibreDeskConfig, name: string): ProfileN
 }
 
 function assertKnown(config: LibreDeskConfig, name: string): void {
-  if (config.profiles[name] === undefined) throw profileNotFound(config, name);
+  if (!Object.hasOwn(config.profiles, name)) throw profileNotFound(config, name);
 }
 
 /** Add or replace a profile. The first profile added becomes the active one. */
