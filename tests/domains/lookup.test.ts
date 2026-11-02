@@ -119,11 +119,16 @@ describe("lookup domain", () => {
     ).toEqual([{ id: 1, key: "plan", name: "Plan", applies_to: "contact", data_type: "list", values: ["a"] }]);
   });
 
-  it("a non-array response throws with the base URL hint instead of becoming an empty list", async () => {
-    await expect(runOperation(op("tags"), {}, { profile, fetchImpl: fakeFetch(null).fetchImpl })).rejects.toMatchObject({
-      hint: expect.stringContaining("base URL"),
-    });
-    await expect(runOperation(op("tags"), {}, { profile, fetchImpl: fakeFetch("<html></html>").fetchImpl })).rejects.toThrow();
+  it("a null list (Go nil slice) gives an empty list", async () => {
+    expect(await runOperation(op("tags"), {}, { profile, fetchImpl: fakeFetch(null).fetchImpl })).toEqual([]);
+  });
+
+  it("a non-null, non-array response throws with the base URL hint", async () => {
+    for (const data of ["<html></html>", { a: 1 }, 7]) {
+      await expect(runOperation(op("tags"), {}, { profile, fetchImpl: fakeFetch(data).fetchImpl })).rejects.toMatchObject({
+        hint: expect.stringContaining("base URL"),
+      });
+    }
   });
 
   it("non-object items in a list are dropped", async () => {

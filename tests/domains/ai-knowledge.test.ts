@@ -168,6 +168,11 @@ describe("ai knowledge domain", () => {
     expect(calls.filter((c) => c.method === "PUT")).toEqual([]);
   });
 
+  it("snippet_update on a null snippet list reports a missing snippet", async () => {
+    const { fetchImpl } = fakeFetch(() => null);
+    await expect(runOperation(op("snippet_update"), { id: 3, title: "x" }, { profile, fetchImpl })).rejects.toBeInstanceOf(NotFoundError);
+  });
+
   it("snippet_update keeps enabled false on a disabled snippet when only the title changes", async () => {
     const { fetchImpl, calls } = fakeFetch(respondWithData);
     await runOperation(op("snippet_update"), { id: 4, title: "Delivery" }, { profile, fetchImpl });
