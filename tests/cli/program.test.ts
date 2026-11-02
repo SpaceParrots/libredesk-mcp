@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -295,6 +295,24 @@ describe("mcp install", () => {
     const snippet = JSON.parse(out.join("")) as { mcpServers: Record<string, unknown> };
     expect(Object.keys(snippet.mcpServers)).toEqual(["libredesk"]);
     await expect(readFile(join(project, ".mcp.json"), "utf8")).rejects.toThrow();
+  });
+
+  it("print scope with --mode env hides the secret unless --show-secret is passed", async () => {
+    await withProfile();
+    await run(["mcp", "install", "--scope", "print", "--mode", "env"]);
+    const hidden = out.join("");
+    expect(hidden).not.toContain("top-secret-value");
+    expect(hidden).toContain("<your-api-secret>");
+    out.length = 0;
+    await run(["mcp", "install", "--scope", "print", "--mode", "env", "--show-secret"]);
+    expect(out.join("")).toContain("top-secret-value");
+  });
+
+  it.skipIf(process.platform === "win32")("writes the file with mode 0600 when it holds a secret", async () => {
+    const project = await withProfile();
+    await writeFile(join(project, ".mcp.json"), "{}", { mode: 0o644 });
+    await run(["mcp", "install", "--mode", "env", "--yes"]);
+    expect((await stat(join(project, ".mcp.json"))).mode & 0o777).toBe(0o600);
   });
 
   it("project scope with --mode env needs --yes in non-TTY, then writes the credentials", async () => {

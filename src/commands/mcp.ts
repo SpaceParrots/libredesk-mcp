@@ -3,18 +3,20 @@
  * `ldesk mcp install`: register the MCP server in a project's `.mcp.json`, or print the snippet.
  */
 
-import { readFile, writeFile } from "node:fs/promises";
+import { chmod, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Command } from "commander";
 import { Option } from "commander";
 import type { CliDeps } from "../cli/domain-commands.js";
 import { handleCliError, printInfo, printSuccess } from "../cli/output.js";
 import { loadConfig, profileNotFound } from "../config.js";
+import { ENV } from "../constants.js";
 import { resolveProfile } from "../context.js";
 import { CancelledError, ConfirmationRequiredError } from "../errors.js";
 import { buildServerEntry, mergeMcpJson, type McpServerEntry } from "../services/mcp-config.js";
 
 const SERVER_NAME = "libredesk";
+const SECRET_PLACEHOLDER = "<your-api-secret>";
 const MCP_FILE = ".mcp.json";
 
 interface InstallOptions {
@@ -24,6 +26,7 @@ interface InstallOptions {
   toolsets?: string;
   profile?: string;
   yes?: boolean;
+  showSecret?: boolean;
 }
 
 async function readIfExists(path: string): Promise<string | undefined> {
@@ -71,16 +74,25 @@ export function registerMcp(program: Command, deps: CliDeps): void {
     .option("--toolsets <list>", "comma separated toolsets to expose")
     .option("--profile <name>", "profile to pin or copy (default: the active one)")
     .option("--yes", "confirm writing a secret into .mcp.json")
+    .option("--show-secret", "with --scope print, show the real API secret instead of a placeholder")
     .action(async (options: InstallOptions) => {
       try {
         const entry = await buildEntry(options);
         if (options.scope === "print") {
-          process.stdout.write(`${JSON.stringify({ mcpServers: { [SERVER_NAME]: entry } }, null, 2)}\n`);
+          const hide = options.showSecret !== true && ENV.API_SECRET in entry.env;
+          const shown = hide ? { ...entry, env: { ...entry.env, [ENV.API_SECRET]: SECRET_PLACEHOLDER } } : entry;
+          process.stdout.write(`${JSON.stringify({ mcpServers: { [SERVER_NAME]: shown } }, null, 2)}\n`);
+          if (hide) printInfo("The API secret is a placeholder. Pass --show-secret to print the real one.");
           return;
         }
-        if (options.mode === "env") await confirmSecretInProject(options, deps);
+        const holdsSecret = options.mode === "env";
+        if (holdsSecret) await confirmSecretInProject(options, deps);
         const path = join(process.cwd(), MCP_FILE);
-        await writeFile(path, mergeMcpJson(await readIfExists(path), SERVER_NAME, entry), "utf8");
+        await writeFile(path, mergeMcpJson(await readIfExists(path), SERVER_NAME, entry), {
+          encoding: "utf8",
+          ...(holdsSecret ? { mode: 0o600 } : {}),
+        });
+        if (holdsSecret && process.platform !== "win32") await chmod(path, 0o600);
         printSuccess(`Added the ${SERVER_NAME} server to ${path}.`);
       } catch (error) {
         (deps.onError ?? handleCliError)(error);
