@@ -91,3 +91,31 @@ describe("confirmImpact", () => {
     await expect(confirmImpact(createArticle, { title: "t" }, { yes: false, isTTY: false, prompt: neverPrompt })).resolves.toBeUndefined();
   });
 });
+
+describe("confirmImpact on publishing and paid switches", () => {
+  const noTty = { yes: false, isTTY: false, prompt: neverPrompt } as const;
+  const asks = (operation: Operation, values: Record<string, unknown>) =>
+    expect(confirmImpact(operation, values, noTty)).rejects.toBeInstanceOf(ConfirmationRequiredError);
+  const passes = (operation: Operation, values: Record<string, unknown>) =>
+    expect(confirmImpact(operation, values, noTty)).resolves.toBeUndefined();
+
+  it("collection create asks only when it publishes", async () => {
+    const create = op("help-center", "collection_create");
+    await asks(create, { help_center_id: 1, name: "n", is_published: true });
+    await passes(create, { help_center_id: 1, name: "n", is_published: false });
+    await passes(create, { help_center_id: 1, name: "n" });
+  });
+
+  it("collection update asks when it changes is_published either way", async () => {
+    const update = op("help-center", "collection_update");
+    await asks(update, { help_center_id: 1, id: 2, is_published: true });
+    await asks(update, { help_center_id: 1, id: 2, is_published: false });
+    await passes(update, { help_center_id: 1, id: 2, name: "n" });
+  });
+
+  it("learning set asks only when it turns learning on", async () => {
+    const set = op("knowledge", "learning_set");
+    await asks(set, { enabled: true });
+    await passes(set, { enabled: false });
+  });
+});

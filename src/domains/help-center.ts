@@ -12,6 +12,9 @@ import { mergeForUpdate, requireList } from "../ops/merge.js";
 
 const PERMISSION = "help_center:manage";
 
+/** Shown before a collection goes public or offline. */
+const COLLECTION_PUBLIC_EFFECT = "Changes what the public help center shows.";
+
 /** Keys of LibreDesk's `HelpCenterRequest`: the body of a help center create or update. */
 const HELP_CENTER_KEYS = [
   "name",
@@ -332,13 +335,14 @@ const collectionCreate = defineOperation({
   },
   positional: ["help_center_id"],
   impact: "write",
+  escalate: { when: (values) => values.is_published === true, condition: "is_published is true", impact: "caution", effect: COLLECTION_PUBLIC_EFFECT },
   permission: PERMISSION,
   undocumented: true,
   cli: {
     notes: ["Help center ids come from `ldesk help-center list`, parent ids from `ldesk help-center collection list <help-center-id>`."],
     examples: [
       "ldesk help-center collection create 2 --name Billing --locale de",
-      "ldesk help-center collection create 2 --name Billing --locale de --parent-id 5 --is-published",
+      "ldesk help-center collection create 2 --name Billing --locale de --parent-id 5 --is-published --yes",
     ],
   },
 });
@@ -358,6 +362,7 @@ const collectionUpdate = defineOperation({
   },
   positional: ["help_center_id", "id"],
   impact: "write",
+  escalate: { when: (values) => values.is_published !== undefined, condition: "is_published is given", impact: "caution", effect: COLLECTION_PUBLIC_EFFECT },
   permission: PERMISSION,
   undocumented: true,
   run: async (input, ctx) => {
@@ -366,7 +371,7 @@ const collectionUpdate = defineOperation({
     if (current === undefined) {
       throw new NotFoundError(`Collection ${input.id} not found in help center ${input.help_center_id}`, {
         status: 404,
-        hint: "List the collections with collection_list.",
+        hint: "List the collections with `ldesk help-center collection list <help-center-id>` (MCP action collection_list).",
       });
     }
     const body = mergeForUpdate(current, input, COLLECTION_KEYS);
@@ -377,7 +382,7 @@ const collectionUpdate = defineOperation({
     examples: [
       'ldesk help-center collection update 2 5 --name "Billing and refunds"',
       "ldesk help-center collection update 2 5 --parent-id null",
-      "ldesk help-center collection update 2 5 --no-is-published",
+      "ldesk help-center collection update 2 5 --no-is-published --yes",
     ],
   },
 });
@@ -391,7 +396,7 @@ const collectionToggle = defineOperation({
   input: { id: collectionId },
   positional: ["id"],
   impact: "caution",
-  effect: "Changes what the public help center shows.",
+  effect: COLLECTION_PUBLIC_EFFECT,
   permission: PERMISSION,
   undocumented: true,
   cli: {

@@ -97,6 +97,9 @@ describe("ai knowledge domain", () => {
     const { fetchImpl } = fakeFetch(respondWithData);
     await expect(runOperation(op("snippet_update"), { id: 99, title: "x" }, { profile, fetchImpl })).rejects.toBeInstanceOf(NotFoundError);
     await expect(runOperation(op("snippet_get"), { id: 99 }, { profile, fetchImpl })).rejects.toBeInstanceOf(NotFoundError);
+    await expect(runOperation(op("snippet_get"), { id: 99 }, { profile, fetchImpl })).rejects.toMatchObject({
+      hint: "List the snippets with `ldesk knowledge snippet list` (MCP action snippet_list).",
+    });
   });
 
   it("snippet_get returns the full snippet", async () => {
@@ -151,6 +154,9 @@ describe("ai knowledge domain", () => {
   it("faq_approve reports a missing suggestion", async () => {
     const { fetchImpl } = fakeFetch(respondWithData);
     await expect(runOperation(op("faq_approve"), { id: 99 }, { profile, fetchImpl })).rejects.toBeInstanceOf(NotFoundError);
+    await expect(runOperation(op("faq_approve"), { id: 99 }, { profile, fetchImpl })).rejects.toMatchObject({
+      hint: "List the suggestions with `ldesk knowledge faq list` (MCP action faq_list).",
+    });
   });
 
   it("learning_set sends { enabled }", async () => {

@@ -59,7 +59,7 @@ function presentSnippet(snippet: Record<string, unknown>): Record<string, unknow
 async function findSnippet(id: number, call: <T>(method: "GET", path: string) => Promise<T>): Promise<Record<string, unknown>> {
   const found = requireList(await call("GET", "/api/v1/ai/snippets"), "the snippet list").filter(isRecord).find((s) => s.id === id);
   if (found === undefined) {
-    throw new NotFoundError(`Snippet ${id} not found`, { status: 404, hint: "List the snippets with snippet_list." });
+    throw new NotFoundError(`Snippet ${id} not found`, { status: 404, hint: "List the snippets with `ldesk knowledge snippet list` (MCP action snippet_list)." });
   }
   return found;
 }
@@ -231,7 +231,7 @@ const faqApprove = defineOperation({
     if (question === undefined || answer === undefined) {
       const suggestion = asRecords(await ctx.call("GET", "/api/v1/ai/faq-suggestions")).find((s) => s.id === input.id);
       if (suggestion === undefined) {
-        throw new NotFoundError(`FAQ suggestion ${input.id} not found`, { status: 404, hint: "List the suggestions with faq_list." });
+        throw new NotFoundError(`FAQ suggestion ${input.id} not found`, { status: 404, hint: "List the suggestions with `ldesk knowledge faq list` (MCP action faq_list)." });
       }
       question ??= String(suggestion.question ?? "");
       answer ??= String(suggestion.answer ?? "");
@@ -278,8 +278,13 @@ const learningSet = defineOperation({
   method: "PUT",
   path: "/api/v1/ai/faq-learning",
   input: { enabled: z.boolean().describe("true turns FAQ learning on, false off.") },
-  impact: "caution",
-  effect: "Mines resolved conversations with your AI provider, at a cost per conversation.",
+  impact: "write",
+  escalate: {
+    when: (values) => values.enabled === true,
+    condition: "enabled is true",
+    impact: "caution",
+    effect: "Mines resolved conversations with your AI provider, at a cost per conversation.",
+  },
   permission: PERMISSION,
   undocumented: true,
   cli: {
