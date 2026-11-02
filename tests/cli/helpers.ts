@@ -27,7 +27,7 @@ export const sample = defineOperation({
     published: z.boolean().default(true),
     allowed_locales: z.array(z.enum(["en", "de"])).optional(),
     mode: z.enum(["a", "b"]).optional(),
-    count: z.number().optional(),
+    count: z.number().nullable().optional(),
   },
   positional: ["id"],
   impact: "write",

@@ -56,7 +56,7 @@ describe("buildCatalog", () => {
       summary: "Delete a help center",
       impact: "destructive",
       undocumented: true,
-      fields: [{ name: "id", kind: "number", required: true, description: "", array: false }],
+      fields: [{ name: "id", kind: "number", required: true, description: "", nullable: false, array: false }],
     });
     expect(catalog[0]?.undocumented).toBe(false);
   });
