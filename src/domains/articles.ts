@@ -41,14 +41,14 @@ const helpCenterId = z.number().int().positive().describe("Help center id.");
 const formatField = z
   .enum(["markdown", "html"])
   .describe(
-    'Content format: "markdown" (default) or "html" for what markdown cannot express, such as tables.',
+    '"markdown" (default) or "html" for what markdown cannot express, such as tables.',
   );
 
 const pathCollectionId = z
   .number()
   .int()
   .default(NO_COLLECTION)
-  .describe("Leave it out.");
+  .describe("LibreDesk ignores it (lookup by id); leave it out.");
 
 const title = z.string().describe("Article title.");
 const content = z
@@ -74,7 +74,7 @@ const articleSettings = {
 const aiEnabled = z
   .boolean()
   .describe(
-    "Let AI assistants answer from the article once published. Default true.",
+    "Let AI assistants answer from it once published. True by default on create; update keeps it unless given.",
   );
 
 const status = z.enum(["draft", "published"]).describe('"draft" (not public) or "published".');

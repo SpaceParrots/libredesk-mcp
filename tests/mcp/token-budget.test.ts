@@ -15,7 +15,7 @@ function measure(recorded: readonly RecordedTool[]): number {
   }, 0);
 }
 
-// Measured 2026-11-02: default toolsets 8138 chars (14515 before trimming descriptions).
+// Measured 2026-11-02: default toolsets 8177 chars (14515 before trimming descriptions).
 // Ceiling: measured * 1.1 rounded up to the next 500.
 const DEFAULT_CEILING = 9_000;
 const HARD_BOUND = 9_000;

@@ -113,6 +113,26 @@ describe("registerDomainTool", () => {
     expect(recorded[0]?.description).toContain("- delete(id): Delete a thing. DESTRUCTIVE: Deletes it.");
   });
 
+  it("leads a merged field description with the actions that require the field", () => {
+    const recorded: RecordedTool[] = [];
+    const articles = DOMAINS.find((d) => d.tool === "libredesk_articles") as Domain;
+    registerDomainTool(recordingServer(recorded), articles);
+    const field = recorded[0]?.shape.collection_id as z.core.$ZodType;
+    expect(z.globalRegistry.get(field)?.description).toBe(
+      "Collection id. For move: Target collection id. For get, delete: LibreDesk ignores it (lookup by id); leave it out. For list: Only this collection.",
+    );
+  });
+
+  it("applies each action's own defaults through the real articles tool", async () => {
+    const articles = DOMAINS.find((d) => d.tool === "libredesk_articles") as Domain;
+    const run = vi.fn().mockResolvedValue({});
+    const actions = domainActions(articles, run);
+    await dispatchAction(actions, { action: "get", id: 7 });
+    expect(run.mock.calls[0]?.[1]).toEqual({ id: 7, collection_id: 0, format: "markdown" });
+    await dispatchAction(actions, { action: "create", collection_id: 3, title: "T", content: "C" });
+    expect(run.mock.calls[1]?.[1]).toMatchObject({ collection_id: 3, title: "T", content: "C", status: "draft", ai_enabled: true });
+  });
+
   it("the merged schema does not fill in another action's defaults", async () => {
     const recorded: RecordedTool[] = [];
     const articles = DOMAINS.find((d) => d.tool === "libredesk_articles") as Domain;

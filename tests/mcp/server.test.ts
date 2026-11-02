@@ -36,12 +36,17 @@ describe("toolsets", () => {
 
   it("unknown toolset fails listing valid ones", () => {
     expect(() => parseToolsets("knowledge, bogus")).toThrow(ConfigError);
-    try {
-      parseToolsets("bogus");
-    } catch (error) {
-      expect((error as ConfigError).message).toContain('"bogus"');
-      expect((error as ConfigError).hint).toContain("knowledge");
-    }
+    expect(() => parseToolsets("bogus")).toThrow('"bogus"');
+    const error = ((): unknown => {
+      try {
+        parseToolsets("bogus");
+        return undefined;
+      } catch (thrown) {
+        return thrown;
+      }
+    })();
+    expect(error).toBeInstanceOf(ConfigError);
+    expect((error as ConfigError).hint).toContain("knowledge");
   });
 
   it("parses all, case and spaces", () => {
