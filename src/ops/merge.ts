@@ -15,8 +15,9 @@ export function requireRecord(value: unknown, what: string): Record<string, unkn
   return value;
 }
 
-/** Return `value` when it is an array, else throw an error that points at the base URL. */
+/** Return `value` as a list: Go encodes an empty nil slice as `null`, which becomes `[]`; any other non-array throws with the base URL hint. */
 export function requireList(value: unknown, what: string): unknown[] {
+  if (value === null || value === undefined) return [];
   if (!Array.isArray(value)) throw new ApiError(`Expected ${what} to be a list.`, { status: 200, hint: BASE_URL_HINT });
   return value;
 }
