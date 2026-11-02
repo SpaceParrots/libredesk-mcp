@@ -41,3 +41,6 @@ dev/data/
 
 # Local planning docs (specs, plans, follow-ups); kept out of the repo
 /docs/superpowers/
+
+# MCP client config of a local checkout; may hold an API secret
+.mcp.json
