@@ -60,3 +60,17 @@ export function redactText(text: string, secrets: readonly string[]): string {
   }
   return out;
 }
+
+/**
+ * Return a deep copy of `value` with {@link redactText} applied to every string, keys included.
+ * For data that should never hold a known secret but might echo one, such as a server response.
+ */
+export function redactDeep<T>(value: T, secrets: readonly string[]): T {
+  const walk = (inner: unknown): unknown => {
+    if (typeof inner === "string") return redactText(inner, secrets);
+    if (Array.isArray(inner)) return inner.map(walk);
+    if (isRecord(inner)) return Object.fromEntries(Object.entries(inner).map(([key, item]) => [redactText(key, secrets), walk(item)]));
+    return inner;
+  };
+  return walk(value) as T;
+}

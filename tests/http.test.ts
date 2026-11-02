@@ -59,6 +59,35 @@ describe("authHeader", () => {
   });
 });
 
+describe("request redaction", () => {
+  const secretProfile: Profile = { ...profile, apiSecret: "s3cr3t-value" };
+
+  it("redacts the secret before cutting a long error body, so no part of it survives the cut", async () => {
+    const body = `${"x".repeat(190)}token key:s3cr3t-value`;
+    const { fetchImpl } = fakeFetch(502, body, "text/html");
+    const error = (await caught(request(secretProfile, "GET", "/api/v1/x", { fetchImpl }))) as ApiError;
+    expect(error.message).not.toContain("s3cr3t");
+    expect(error.message).not.toContain("token key:s3c");
+  });
+
+  it("redacts the secret from a server message", async () => {
+    const { fetchImpl } = fakeFetch(400, { status: "error", message: "bad header token key:s3cr3t-value" });
+    const error = (await caught(request(secretProfile, "GET", "/api/v1/x", { fetchImpl }))) as ApiError;
+    expect(error.message).toBe("bad header ••••");
+  });
+
+  it("redacts the secret from success bodies, text and json, keys included", async () => {
+    const text = fakeFetch(200, "echo: s3cr3t-value", "text/plain");
+    await expect(request(secretProfile, "GET", "/api/v1/x", { fetchImpl: text.fetchImpl })).resolves.toBe("echo: ••••");
+    const json = fakeFetch(200, { status: "success", data: { headers: ["token key:s3cr3t-value"], "s3cr3t-value": 1, n: 2 } });
+    await expect(request(secretProfile, "GET", "/api/v1/x", { fetchImpl: json.fetchImpl })).resolves.toEqual({
+      headers: ["••••"],
+      "••••": 1,
+      n: 2,
+    });
+  });
+});
+
 describe("request", () => {
   it("sends token auth and JSON body, unwraps data", async () => {
     const { fetchImpl, calls } = fakeFetch(200, { status: "success", data: { id: 7 } });

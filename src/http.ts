@@ -8,7 +8,7 @@ import type { Profile } from "./config.js";
 import { HTTP_TIMEOUT_MS } from "./constants.js";
 import { ApiError, AuthError, NetworkError, NotFoundError, PermissionError } from "./errors.js";
 import { isRecord } from "./guards.js";
-import { redactText } from "./mask.js";
+import { redactDeep, redactText } from "./mask.js";
 
 /** HTTP methods used by the LibreDesk API. */
 export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
@@ -59,10 +59,11 @@ function parseJson(text: string): unknown {
   }
 }
 
-function errorMessage(response: Response, parsed: unknown, text: string): string {
-  if (isRecord(parsed) && typeof parsed.message === "string" && parsed.message !== "") return parsed.message;
+/** The error text: the server's message, or the start of the body. `text` is redacted before it is cut, so no secret is left half-masked. */
+function errorMessage(response: Response, parsed: unknown, text: string, redact: (s: string) => string): string {
+  if (isRecord(parsed) && typeof parsed.message === "string" && parsed.message !== "") return redact(parsed.message);
   const base = `HTTP ${response.status} ${response.statusText}`.trim();
-  const snippet = parsed === undefined ? text.trim().slice(0, BODY_SNIPPET_LENGTH) : "";
+  const snippet = parsed === undefined ? redact(text.trim()).slice(0, BODY_SNIPPET_LENGTH) : "";
   return snippet ? `${base}: ${snippet}` : base;
 }
 
@@ -73,7 +74,7 @@ function toApiError(response: Response, parsed: unknown, text: string, redact: (
     errorType: typeof body.error_type === "string" ? body.error_type : undefined,
     data: body.data,
   };
-  const message = redact(errorMessage(response, parsed, text));
+  const message = redact(errorMessage(response, parsed, text, redact));
   switch (response.status) {
     case 401:
       return new AuthError(message, {
@@ -92,14 +93,19 @@ function toApiError(response: Response, parsed: unknown, text: string, redact: (
   }
 }
 
-/** Send one request to the LibreDesk API and return the unwrapped `data` (or the raw body when not enveloped). */
+/**
+ * Send one request to the LibreDesk API and return the unwrapped `data` (or the raw body when not
+ * enveloped). The secret is redacted from errors and from the returned data, in case a proxy or a
+ * debug page echoes the request headers.
+ */
 export async function request<T = unknown>(
   profile: Profile,
   method: HttpMethod,
   path: string,
   opts: RequestOptions = {},
 ): Promise<T> {
-  const redact = (text: string): string => redactText(text, [authHeader(profile), profile.apiSecret]);
+  const secrets = [authHeader(profile), profile.apiSecret];
+  const redact = (text: string): string => redactText(text, secrets);
   const url = buildUrl(profile.url, path, opts.query);
   const headers: Record<string, string> = { Authorization: authHeader(profile), Accept: "application/json" };
   const hasBody = opts.body !== undefined;
@@ -128,7 +134,7 @@ export async function request<T = unknown>(
   if (!response.ok) throw toApiError(response, parsed, text, redact);
   // Not every endpoint answers JSON (a transcript is text/plain, a preview is HTML), so the body comes back as text.
   // Callers that expect JSON check the shape and add BASE_URL_HINT (see requireRecord, requireList, verifyCredentials).
-  if (parsed === undefined) return text as T;
-  if (isRecord(parsed) && parsed.status === "success" && "data" in parsed) return parsed.data as T;
-  return parsed as T;
+  if (parsed === undefined) return redact(text) as T;
+  if (isRecord(parsed) && parsed.status === "success" && "data" in parsed) return redactDeep(parsed.data, secrets) as T;
+  return redactDeep(parsed, secrets) as T;
 }
