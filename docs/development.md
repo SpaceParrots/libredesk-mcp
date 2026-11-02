@@ -36,8 +36,9 @@ The live tests create and delete their own data. To run them against a productio
 Every endpoint is declared once with `defineOperation` in a file under `src/domains/`. The CLI command, the interactive prompts, the MCP action and the catalog entry are generated from that declaration.
 
 1. Add a `defineOperation({ name, summary, method, path, input, impact, ... })` to the domain file. `input` is a zod shape with a `.describe()` on every field. Set `undocumented: true` when the shape comes from the LibreDesk source.
-2. Add CLI help with the optional `cli` property: `examples` (full `ldesk ...` commands), `notes` and `hidden` fields. It appears only in `--help`, so it costs the MCP tool definitions nothing.
-3. Add it to the `operations` array of the domain.
-4. For a new domain, create `src/domains/<name>.ts` that exports a `Domain` and add it to `DOMAINS` in `src/domains/index.ts`.
-5. Add a unit test and, when the endpoint exists on 2.9.2, a live test.
-6. Run `npm run verify`.
+2. Add CLI help with the optional `cli` property: `examples` (one to three full `ldesk ...` commands that run without a terminal; `tests/cli/examples.test.ts` runs each one), `notes`, `hidden` fields and `flags` (on and off text for a boolean flag). It appears only in `--help`, so it costs the MCP tool definitions nothing.
+3. When only some inputs make an operation risky, add `escalate` (`when`, `condition`, `impact`, `effect`) instead of raising `impact`. `articles create` with `status: published` and `learning set` with `enabled: true` ask for confirmation this way; the MCP action list says `CAUTION when <condition>`.
+4. Add it to the `operations` array of the domain. An operation with a `group` needs a description of that group in the domain's `groups`.
+5. For a new domain, create `src/domains/<name>.ts` that exports a `Domain` and add it to `DOMAINS` in `src/domains/index.ts`.
+6. Add a unit test and, when the endpoint exists on 2.9.2, a live test.
+7. Run `npm run verify`.
