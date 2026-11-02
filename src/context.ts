@@ -29,7 +29,7 @@ export interface ResolveProfileOptions {
 const storage = new AsyncLocalStorage<string | undefined>();
 
 function stored(config: LibreDeskConfig, name: string): Profile {
-  const found = config.profiles[name];
+  const found = Object.hasOwn(config.profiles, name) ? config.profiles[name] : undefined;
   if (found === undefined) throw profileNotFound(config, name);
   return { name, ...found };
 }

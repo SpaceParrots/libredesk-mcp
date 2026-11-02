@@ -37,6 +37,10 @@ describe("resolveProfile", () => {
     await expect(run).rejects.toThrow(/prod, staging/);
     await expect(resolveProfile({ override: "nope", env: {}, config: stored })).rejects.toThrow(ProfileNotFoundError);
   });
+  it("names inherited from Object.prototype are not profiles", async () => {
+    await expect(resolveProfile({ env: { LIBREDESK_PROFILE: "constructor" }, config: stored })).rejects.toThrow(ProfileNotFoundError);
+    await expect(resolveProfile({ override: "toString", env: {}, config: stored })).rejects.toThrow(ProfileNotFoundError);
+  });
   it("project link matches a subdirectory of the linked dir", async () => {
     const cfg = linkProject(stored, root, "staging");
     const r = await resolveProfile({ env: {}, cwd: deep, config: cfg });
