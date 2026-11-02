@@ -1,11 +1,13 @@
 /**
  * @module cli/output
- * Printing results and errors. Everything is masked before it is written, and the writers are
+ * Printing results and errors. Everything is masked before it is written, text output has its
+ * terminal control characters escaped (server data can carry them), and the writers are
  * injectable so tests can capture output without touching the console.
  */
 
 import { toLibreDeskError } from "../errors.js";
 import { maskSecrets } from "../mask.js";
+import { printable } from "../text.js";
 
 /** Writes a chunk of text to a stream. */
 export type Writer = (text: string) => void;
@@ -77,22 +79,23 @@ function render(data: unknown): string {
 
 /**
  * Print a command result to stdout after masking secrets. `json` prints the masked data as
- * pretty JSON; otherwise arrays of objects become a table, objects `key: value` lines.
+ * pretty JSON (which escapes control characters itself); otherwise arrays of objects become a
+ * table, objects `key: value` lines, with terminal control characters escaped.
  */
 export function printResult(data: unknown, opts: { json: boolean }, write: Writer = stdout): void {
   const masked = maskSecrets(data);
-  const text = opts.json ? (JSON.stringify(masked, null, 2) ?? "") : render(masked);
+  const text = opts.json ? (JSON.stringify(masked, null, 2) ?? "") : printable(render(masked));
   if (text !== "") write(`${text}\n`);
 }
 
 /** Print a success message to stdout. */
 export function printSuccess(msg: string, write: Writer = stdout): void {
-  write(`${msg}\n`);
+  write(`${printable(msg)}\n`);
 }
 
 /** Print an informational message to stderr, so it never mixes into piped results. */
 export function printInfo(msg: string, write: Writer = stderr): void {
-  write(`${msg}\n`);
+  write(`${printable(msg)}\n`);
 }
 
 /**
@@ -107,16 +110,19 @@ export function handleCliError(
 ): never {
   const error = toLibreDeskError(err);
   if (error.code === "CANCELLED") {
-    write(`${error.message}\n`);
+    write(`${printable(error.message)}\n`);
     return exit(EXIT_CANCELLED);
   }
   printError(error, write);
   return exit(EXIT_ERROR);
 }
 
-/** Print `Error: message` and the `Hint:` line to stderr without exiting. Never prints the cause. */
+/**
+ * Print `Error: message` and the `Hint:` line to stderr without exiting. Never prints the cause.
+ * The message can quote the server, so control characters are escaped.
+ */
 export function printError(err: unknown, write: Writer = stderr): void {
   const error = toLibreDeskError(err);
-  write(`Error: ${error.message}\n`);
-  if (error.hint) write(`Hint: ${error.hint}\n`);
+  write(`Error: ${printable(error.message)}\n`);
+  if (error.hint) write(`Hint: ${printable(error.hint)}\n`);
 }
