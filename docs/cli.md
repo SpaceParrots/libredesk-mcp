@@ -9,11 +9,13 @@ ldesk login --url https://helpdesk.example.com --api-key <key>
 ldesk status
 ```
 
-`ldesk login` verifies the credentials against `/api/v1/agents/me` and saves them as a profile. It asks for any missing value in a terminal, the secret without echo, and fails naming them without one. For CI or other non-interactive runs pass `--api-secret <secret>` too, but it lands in your shell history and in the process list; prefer the `LIBREDESK_URL`, `LIBREDESK_API_KEY` and `LIBREDESK_API_SECRET` environment variables there.
+`ldesk login` checks the credentials against your LibreDesk and saves them as a profile. In a terminal it asks for any value you left out, and the secret is not shown while you type it.
 
-The profile name defaults to the host name with dots replaced by dashes (`helpdesk-example-com`); `--name` overrides it. The config lives in `~/.libredesk-mcp/config.json` with mode 0600. Output masks the API secret everywhere.
+For CI and other runs without a terminal, you can pass `--api-secret <secret>`, but it then ends up in your shell history and the process list. Setting the `LIBREDESK_URL`, `LIBREDESK_API_KEY` and `LIBREDESK_API_SECRET` environment variables is safer there.
 
-A base URL may have a trailing slash or a path prefix behind a reverse proxy, such as `https://example.com/helpdesk/`.
+- The profile is named after the host, with dots replaced by dashes (`helpdesk-example-com`). `--name` picks another name.
+- Profiles are stored in `~/.libredesk-mcp/config.json` with file mode 0600. The API secret is masked in all output.
+- The URL may end with a slash or include a path, for a LibreDesk behind a reverse proxy such as `https://example.com/helpdesk/`.
 
 ## Checking the setup
 
@@ -22,7 +24,17 @@ ldesk doctor
 ldesk doctor --json --timeout 60
 ```
 
-`ldesk doctor` prints one line per check, each ok, warn or fail: the Node version and the path of the running `ldesk`, the profile in effect and whether its server answers (as `ldesk status`), and the LibreDesk entries in `~/.claude.json` (user scope and the local scope of the current folder) and `./.mcp.json`. It starts every entry exactly as configured, sends the MCP `initialize` request and shows the answer, or the exit code and the last lines the server printed. Run it in the folder where the MCP client runs, because local and project entries depend on it. When an entry fails but `node` with the running `ldesk` works, it prints the `claude mcp add` line that uses that. Env values from the config are never printed, only their names. Each launch may take 10 seconds; `--timeout` changes that, which helps with `npx` on its first run. On Windows a command without an extension, such as `ldesk` or `npx`, is started through `cmd.exe` so that its `.cmd` or `.exe` shim is found on PATH.
+`ldesk doctor` checks everything between you and a working MCP connection and prints one line per check, marked ok, warn or fail:
+
+- the Node version and the path of the `ldesk` that is running,
+- the profile in effect and whether its server answers, like `ldesk status`,
+- every LibreDesk entry in `~/.claude.json` (user scope, and the local scope of the current folder) and in `./.mcp.json`.
+
+It starts each MCP entry exactly as configured, sends the MCP `initialize` request, and shows the answer, or the exit code and the last lines the server printed. When an entry fails but a direct `node` launch works, it prints a `claude mcp add` line you can use instead.
+
+Run it in the folder where your MCP client runs, because local and project entries depend on it. An entry in `./.mcp.json` comes with the folder, for example with a cloned repo, so doctor shows its command and asks before starting it. Without a terminal it skips such entries unless you pass `--yes`. Values of environment variables in the config are never printed, only their names. Each launch may take up to 10 seconds; raise that with `--timeout`, for example for `npx` on its first run.
+
+On Windows, a command without an extension, such as `ldesk` or `npx`, is started through `cmd.exe` so that its `.cmd` or `.exe` file is found on PATH.
 
 ## Profiles
 
@@ -95,13 +107,27 @@ ldesk articles set-status '[12,13,14]' --status published --yes
 ldesk articles get 12
 ```
 
-`ldesk articles create <collection-id>` makes a draft with `ai_enabled` on. Publish it with `set-status`, or pass `--status published` to `create`; both ask for confirmation, because a published article is public and used by AI assistants. `set-status` takes one id or a JSON list of ids, and with a list prints ok, failed and an entry per id. Writes print a short record (id, title, slug, status, `ai_enabled`); `get` prints the whole article.
+`ldesk articles create <collection-id>` makes a draft with `ai_enabled` on. To publish it, use `set-status`, or pass `--status published` to `create`. Both ask for confirmation, because a published article is public and used by the AI assistants.
 
-LibreDesk makes the slug from the title when the article is created and keeps it when the title changes later. It drops accents, so a German "ä" becomes "a", not "ae".
+`set-status` takes one id or a JSON list of ids. With a list it prints how many succeeded and failed, and one line per id.
 
-LibreDesk stores article bodies as HTML, so `ldesk` converts markdown to HTML on write and back to markdown on read. For what markdown cannot express, such as tables, pass `--format html`: `create` and `update` then send the content as is, and `get --format html` returns the stored HTML. When `get` finds markup that would not survive the trip back to markdown, it returns the HTML and reports `content_format` as `html`. A literal `~` reads back as `&#126;`; `~~text~~` is strikethrough.
+Writes print a short record (id, title, slug, status, `ai_enabled`). Use `get` to see the whole article.
 
-Updates only need the id and the fields that change. LibreDesk replaces the whole record on every update, so `ldesk` reads the current record first and sends every field back with your changes applied. A title change does not reset `ai_enabled`, `status`, `content`, `excerpt` or the collection.
+### Slugs
+
+LibreDesk makes the slug from the title when the article is created, and keeps it when the title changes later. You can't set it yourself. It drops accents, so a German "ä" becomes "a", not "ae".
+
+### Markdown and HTML
+
+LibreDesk stores article bodies as HTML. `ldesk` converts your markdown to HTML when writing and back to markdown when reading.
+
+- For what markdown can't express, such as tables, pass `--format html`. `create` and `update` then send the content unchanged, and `get --format html` returns the stored HTML.
+- When `get` finds markup that would not survive the conversion back to markdown, it returns the HTML and sets `content_format` to `html`.
+- A literal `~` reads back as `&#126;`. `~~text~~` is strikethrough.
+
+### Updates
+
+Updates only need the id and the fields that change. LibreDesk replaces the whole record on every update, so `ldesk` first reads the current record and sends it back with your changes applied. Changing the title does not reset `ai_enabled`, `status`, `content`, `excerpt` or the collection.
 
 ## Syncing a folder of articles
 
@@ -118,15 +144,21 @@ sort_order: 2
 Orders can be returned within 30 days.
 ```
 
-The keys are `title`, `collection_id`, `excerpt`, `sort_order`, `ai_enabled`, `locale`, `meta_title`, `meta_description`, `meta_image_url`, `format` (`markdown` or `html`) and `id`, one `key: value` per line. Without `title`, a leading `# heading` is the title. `--collection-id` sets the collection for files without `collection_id`.
+The frontmatter takes one `key: value` per line. The keys are `title`, `collection_id`, `excerpt`, `sort_order`, `ai_enabled`, `locale`, `meta_title`, `meta_description`, `meta_image_url`, `format` (`markdown` or `html`) and `id`. Without `title`, a leading `# heading` becomes the title. `--collection-id` sets the collection for files that have no `collection_id`.
 
 ```bash
-ldesk articles sync ./help --collection-id 7 --dry-run   # report only
+ldesk articles sync ./help --collection-id 7 --dry-run   # only report what would change
 ldesk articles sync ./help --collection-id 7
 ldesk articles set-status '[41,42,43]' --status published --yes
 ```
 
-A file without `id` becomes a new draft, and sync writes `id: <new id>` into its frontmatter, so the next run updates the same article instead of making another. A file with `id` is written only when a field differs, so running sync again sends just the changes; a different `collection_id` moves the article. Keys you leave out keep their value on the server. Sync never publishes or unpublishes, and a `status` key is an error: publish afterwards with `set-status`. It prints the counts and one line per file, and a failing file does not stop the others.
+How a run treats each file:
+
+- **No `id`:** sync creates a draft and writes `id: <new id>` into the file's frontmatter. The next run then updates that article instead of creating another one.
+- **With `id`:** sync compares the file with the article and writes only when something differs. A different `collection_id` moves the article. Keys you leave out keep their value on the server.
+- **Status:** sync never publishes or unpublishes. A `status` key is an error; publish afterwards with `set-status`.
+
+It prints the totals and one line per file. A failing file does not stop the others.
 
 ## What AI assistants can see
 

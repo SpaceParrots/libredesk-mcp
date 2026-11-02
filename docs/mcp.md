@@ -1,44 +1,40 @@
 # MCP server
 
-`ldesk serve` runs the MCP server on stdio. It registers one tool per domain for reading and for writing drafts, two shared tools for the risky actions of every domain, and two helpers. Each takes an `action` field:
+`ldesk serve` starts an MCP server on stdio. MCP clients such as Claude Code and Claude Desktop launch it and give the model tools to work with your LibreDesk.
 
-- `libredesk_help_center`: help centers and collections.
-- `libredesk_articles`: articles.
-- `libredesk_ai_knowledge`: snippets and FAQ suggestions.
-- `libredesk_lookup`: read-only lookups of ids.
-- `libredesk_publish`: what customers and AI assistants see, and paid switches: `article_set_status`, `collection_publish`, `help_center_toggle`, `learning_set`.
-- `libredesk_delete`: `help_center_delete`, `collection_delete`, `article_delete`, `snippet_delete`.
-- `libredesk_request`: `catalog` finds an endpoint, `call` sends a raw request.
-- `libredesk_status`: the profile in use and whether its server answers.
+## Setup
 
-Every tool takes an optional `profile`. The domain tools cannot publish: `articles create` always makes a draft, and collections are published with `collection_publish`. `article_set_status` and `collection_publish` take one id or a list of up to 100, and return an ok or error entry per id.
+The server needs a LibreDesk login. There are two ways to give it one.
 
-Writes return a short record (id, title, slug, status, `ai_enabled`, `updated_at`), not the content just sent; `get` returns the whole record.
+### With a stored login (recommended)
 
-`libredesk_articles` action `sync` takes a path to a `.md` file or folder on the machine the server runs on, and creates or updates the articles from it, so article text never has to pass through the model. The file format is in [the CLI reference](cli.md#syncing-a-folder-of-articles). Action `visibility` lists which articles the AI assistants can use and why the others are hidden.
+Run `ldesk login` once. The server then uses that login, and the API secret never appears in a client config file.
 
-## Permissions
+In Claude Code:
 
-Clients decide per tool name whether to ask before a call. Because publishing and deleting live in their own tools, you can allow the domain tools once and keep a confirmation on the rest. In Claude Code, `.claude/settings.json`:
-
-```json
-{
-  "permissions": {
-    "allow": ["mcp__libredesk__libredesk_help_center", "mcp__libredesk__libredesk_articles", "mcp__libredesk__libredesk_ai_knowledge", "mcp__libredesk__libredesk_lookup", "mcp__libredesk__libredesk_status"],
-    "ask": ["mcp__libredesk__libredesk_publish", "mcp__libredesk__libredesk_delete", "mcp__libredesk__libredesk_request"]
-  }
-}
+```bash
+claude mcp add libredesk -- ldesk serve
 ```
 
-The tools also carry the MCP hints `readOnlyHint`, `destructiveHint` and `idempotentHint`, and the server instructions tell the model to confirm publishing and deleting with you first.
+If you have more than one profile, pin one with `LIBREDESK_PROFILE`:
 
-## What AI assistants can see
+```bash
+claude mcp add libredesk -e LIBREDESK_PROFILE=helpdesk-example-com -- ldesk serve
+```
 
-An article reaches LibreDesk's AI assistants only when all of these hold: it is published, `ai_enabled` is on, every collection above it is published, and the help center is online. LibreDesk re-indexes an article in the background right after a change and checks all of them again every minute.
+Without `LIBREDESK_PROFILE`, the server uses the profile linked to the folder it runs in, or else the active profile. See [Profiles](cli.md#profiles).
 
-## Setup with a stored login
+### With environment variables
 
-Run `ldesk login` once, then point the MCP client at that profile with `LIBREDESK_PROFILE`. The secret stays out of the MCP config. Claude Code, `.mcp.json` in the project:
+Put the credentials into the client config instead. This needs no `ldesk login`, but the secret is then stored in that file.
+
+```bash
+claude mcp add libredesk -e LIBREDESK_URL=https://helpdesk.example.com -e LIBREDESK_API_KEY=<your-api-key> -e LIBREDESK_API_SECRET=<your-api-secret> -- ldesk serve
+```
+
+### Config file
+
+Clients that use a JSON file, such as `.mcp.json` in a project for Claude Code, take the same settings:
 
 ```json
 {
@@ -52,35 +48,11 @@ Run `ldesk login` once, then point the MCP client at that profile with `LIBREDES
 }
 ```
 
-Or with the CLI: `claude mcp add libredesk -e LIBREDESK_PROFILE=helpdesk-example-com -- ldesk serve`.
+Replace the `env` block with `LIBREDESK_URL`, `LIBREDESK_API_KEY` and `LIBREDESK_API_SECRET` to pass credentials directly, or leave it out to use the active profile.
 
-Without `LIBREDESK_PROFILE` the server uses the profile linked to its working directory, else the active one.
+### Claude Desktop
 
-## Setup with environment variables
-
-Put the credentials in the config of the MCP client instead. Claude Code, `.mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "libredesk": {
-      "command": "ldesk",
-      "args": ["serve"],
-      "env": {
-        "LIBREDESK_URL": "https://helpdesk.example.com",
-        "LIBREDESK_API_KEY": "<your-api-key>",
-        "LIBREDESK_API_SECRET": "<your-api-secret>"
-      }
-    }
-  }
-}
-```
-
-The same with the CLI: `claude mcp add libredesk -e LIBREDESK_URL=https://helpdesk.example.com -e LIBREDESK_API_KEY=<your-api-key> -e LIBREDESK_API_SECRET=<your-api-secret> -- ldesk serve`.
-
-## Claude Desktop
-
-Claude Desktop reads `claude_desktop_config.json` (Settings, Developer, Edit Config). The entry has the same shape. Desktop often does not see your shell PATH, so running through npx or giving the full path to `ldesk` as `command` is safer:
+Claude Desktop reads `claude_desktop_config.json` (Settings, Developer, Edit Config). It often does not see the PATH of your shell, so run the server through `npx`, or set `command` to the full path of `ldesk`:
 
 ```json
 {
@@ -94,31 +66,84 @@ Claude Desktop reads `claude_desktop_config.json` (Settings, Developer, Edit Con
 }
 ```
 
-Use the `LIBREDESK_URL`, `LIBREDESK_API_KEY` and `LIBREDESK_API_SECRET` variables in `env` instead of `LIBREDESK_PROFILE` to skip `ldesk login`.
+### Let ldesk write the config
 
-## `ldesk mcp install`
-
-`ldesk mcp install` writes the entry into `./.mcp.json` for you and keeps the other servers and keys in the file.
+`ldesk mcp install` writes the entry into `./.mcp.json` and keeps every other server in the file:
 
 ```bash
-ldesk mcp install                       # pin the active profile with LIBREDESK_PROFILE
-ldesk mcp install --mode env --yes      # copy the credentials into the file
+ldesk mcp install                       # use the active profile, pinned with LIBREDESK_PROFILE
 ldesk mcp install --npx                 # run through npx instead of a global ldesk
 ldesk mcp install --toolsets knowledge  # also set LIBREDESK_TOOLSETS
-ldesk mcp install --scope print         # print the snippet for another client
+ldesk mcp install --mode env --yes      # copy the credentials into the file
+ldesk mcp install --scope print         # only print the entry, for another client
 ```
 
-`--mode env` writes the API secret into `.mcp.json`, which is often committed, so it asks first and needs `--yes` without a terminal. `--scope print` hides the secret behind the placeholder `<your-api-secret>`. Add `--show-secret` to print the real one.
+`--mode env` writes the API secret into `.mcp.json`, a file that is often committed, so it asks first. `--scope print` shows the placeholder `<your-api-secret>` unless you add `--show-secret`.
+
+### When it does not connect
+
+Run `ldesk doctor` in the folder where the client runs. It starts each LibreDesk entry of `~/.claude.json` and `./.mcp.json` exactly as configured and shows the answer or the error. When an entry fails but a direct `node` launch works, it prints a `claude mcp add` line you can use instead. See [Checking the setup](cli.md#checking-the-setup).
+
+## Tools
+
+Each tool takes an `action` and that action's fields, plus an optional `profile` to use another stored login for one call.
+
+| Tool | What it does |
+| --- | --- |
+| `libredesk_help_center` | Help centers and collections: list, create, edit, reorder. |
+| `libredesk_articles` | Articles: list, read, create drafts, edit, move, translate, sync from files, check visibility. |
+| `libredesk_ai_knowledge` | AI snippets and FAQ suggestions. |
+| `libredesk_lookup` | Read-only lookups of ids: agents, teams, inboxes, tags, statuses and more. |
+| `libredesk_publish` | Changes what customers and AI assistants see, or what costs money: publish articles and collections, put a help center online or offline, switch FAQ learning on or off. |
+| `libredesk_delete` | Deletes help centers, collections, articles and snippets. |
+| `libredesk_request` | Finds any other endpoint (`catalog`) and calls it (`call`). |
+| `libredesk_status` | Shows the profile in use and whether the server answers. |
+
+A few things worth knowing:
+
+- The first four tools cannot publish. `create` always makes a draft, and publishing goes through `libredesk_publish`. Their edits still take effect at once, also on an article that is already published.
+- `article_set_status` and `collection_publish` take one id or a list of up to 100, and report success or the error for each id.
+- Writes return a short record (id, title, slug, status, `ai_enabled`, `updated_at`) instead of repeating the content the model just sent. `get` returns the full record.
+- The `sync` action of `libredesk_articles` reads markdown files from the machine the server runs on and creates or updates articles from them, so long texts never pass through the model. The file format is described in [Syncing a folder of articles](cli.md#syncing-a-folder-of-articles).
+- The `visibility` action lists which articles the AI assistants can use and why the others are hidden.
+
+## Permissions
+
+MCP clients decide per tool whether to ask you before a call. Because publishing and deleting have their own tools, you can allow the everyday tools once and still be asked before an article or collection is published, a help center goes online or offline, or anything is deleted. In Claude Code, add this to `.claude/settings.json`:
+
+```json
+{
+  "permissions": {
+    "allow": ["mcp__libredesk__libredesk_help_center", "mcp__libredesk__libredesk_articles", "mcp__libredesk__libredesk_ai_knowledge", "mcp__libredesk__libredesk_lookup", "mcp__libredesk__libredesk_status"],
+    "ask": ["mcp__libredesk__libredesk_publish", "mcp__libredesk__libredesk_delete", "mcp__libredesk__libredesk_request"]
+  }
+}
+```
+
+Allowing the everyday tools still lets the model change live content without asking: edits to an article that is already published, help center settings such as custom CSS and JavaScript, and snippets, which assistants use as soon as they are enabled. Allow them only where you are fine with that, or keep `libredesk_help_center` and `libredesk_ai_knowledge` on ask.
+
+The tools also carry the MCP hints `readOnlyHint`, `destructiveHint` and `idempotentHint`, and the server tells the model to confirm publishing and deleting with you first.
+
+## What AI assistants can see
+
+An article reaches LibreDesk's AI assistants only when all four of these hold:
+
+1. The article is published.
+2. Its `ai_enabled` setting is on.
+3. Every collection above it is published.
+4. The help center is online.
+
+LibreDesk re-indexes an article in the background right after a change and checks all articles again every minute.
 
 ## Toolsets
 
-`LIBREDESK_TOOLSETS` picks which domain tools are registered, as a comma separated list of:
+`LIBREDESK_TOOLSETS` limits which domain tools are registered, as a comma-separated list:
 
-- `knowledge`: help center, articles and AI knowledge.
-- `ai`, `workflow`, `support`: reserved for later phases.
+- `knowledge`: help centers, articles and AI knowledge.
+- `ai`, `workflow`, `support`: reserved for later versions.
 - `all`: every toolset.
 
-Unset, every toolset except `support` is on. The `core` toolset (lookup) is always on, and so are `libredesk_request` and `libredesk_status`. `libredesk_request` can reach every operation, including those of a toolset that is switched off. An unknown name stops the server with a message listing the valid ones.
+When it is not set, every toolset except `support` is on. `libredesk_lookup`, `libredesk_request` and `libredesk_status` are always registered. `libredesk_request` can reach every endpoint, including those of a toolset that is switched off. An unknown name stops the server with a message that lists the valid ones.
 
 ```json
 { "env": { "LIBREDESK_TOOLSETS": "knowledge" } }
