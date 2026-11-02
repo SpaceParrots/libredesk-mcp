@@ -10,6 +10,9 @@ import { loadConfig } from "../../src/config.js";
 import { ConfirmationRequiredError, InputError } from "../../src/errors.js";
 import { startMcpServer } from "../../src/mcp/server.js";
 import { neverPrompt } from "./helpers.js";
+import { fakeSpawn } from "../services/fake-child.js";
+import { PACKAGE_NAME } from "../../src/constants.js";
+import type { DoctorOverrides } from "../../src/commands/doctor.js";
 
 vi.mock("../../src/mcp/server.js", () => ({ startMcpServer: vi.fn().mockResolvedValue(undefined) }));
 
@@ -233,6 +236,46 @@ describe("status", () => {
   it("says in its help when it exits 1", () => {
     const help = helpOf(createProgram(deps()), "status").replaceAll(/\s+/g, " ");
     expect(help).toContain("Exits 1 when no profile is set up (with an error) or the server is not reachable");
+  });
+});
+
+describe("doctor", () => {
+  afterEach(() => {
+    process.exitCode = undefined;
+  });
+
+  const status = () =>
+    Promise.resolve({ profile: "p", source: "active" as const, url: "https://x.example", apiKey: "••••5678", reachable: true, agent: "a@x.y", targetVersion: "2.9.2", configPath: "/c" });
+
+  function overrides(answer: boolean): DoctorOverrides {
+    const { spawn } = fakeSpawn(() => (answer ? { kind: "answer", name: PACKAGE_NAME, version: "0.0.0" } : { kind: "crash", code: 1, stderr: "boom\n" }));
+    return { homeDir: dir, cwd: dir, platform: "linux", execPath: "/usr/bin/node", scriptPath: "/opt/ldesk/dist/index.js", status, spawn, stop: () => undefined, exists: () => false };
+  }
+
+  it("prints one line per check and exits 0 when nothing fails", async () => {
+    await run(["doctor"], deps(), { doctor: overrides(true) });
+    const text = printed[0]?.data as string;
+    expect(printed[0]?.json).toBe(false);
+    expect(text).toMatch(/^ok {4}node/m);
+    // The fake answers as version 0.0.0, which is a warning, not a failure.
+    expect(text).toMatch(/^warn {2}launch direct +answered as @spaceparrots\/libredesk-mcp 0\.0\.0/m);
+    expect(text).toContain("No problems found.");
+    expect(process.exitCode ?? 0).toBe(0);
+  });
+
+  it("prints JSON with --json and exits 1 when a check fails", async () => {
+    await run(["doctor", "--json", "--timeout", "2"], deps(), { doctor: overrides(false) });
+    const report = printed[0]?.data as { ok: boolean; checks: { name: string; state: string }[] };
+    expect(printed[0]?.json).toBe(true);
+    expect(report.ok).toBe(false);
+    expect(report.checks.find((c) => c.name === "launch direct")?.state).toBe("fail");
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("rejects a timeout that is not a positive number", async () => {
+    await run(["doctor", "--timeout", "soon"], deps(), { doctor: overrides(true) });
+    expect(errors[0]).toBeInstanceOf(InputError);
+    expect(printed).toEqual([]);
   });
 });
 

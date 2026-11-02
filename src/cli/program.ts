@@ -5,6 +5,7 @@
 
 import { createRequire } from "node:module";
 import { Command } from "commander";
+import { registerDoctor, type DoctorOverrides } from "../commands/doctor.js";
 import { registerLogin } from "../commands/login.js";
 import { registerMcp } from "../commands/mcp.js";
 import { registerProfile } from "../commands/profile.js";
@@ -29,6 +30,8 @@ export interface ProgramExtras {
   readonly runInteractive?: () => Promise<void>;
   /** MCP server on stdio (`ldesk serve`). Defaults to {@link startMcpServer}. */
   readonly startServer?: () => Promise<void>;
+  /** Replacements for `ldesk doctor`: config locations, process spawning, the status check. */
+  readonly doctor?: DoctorOverrides;
 }
 
 /** Create the `ldesk` program. Nothing runs until it is parsed. */
@@ -44,6 +47,7 @@ export function createProgram(deps: CliDeps, extras: ProgramExtras = {}): Comman
   registerLogin(program, deps);
   registerProfile(program, deps);
   registerStatus(program, deps);
+  registerDoctor(program, deps, extras.doctor);
   registerRequest(program, deps);
   registerMcp(program, deps);
 

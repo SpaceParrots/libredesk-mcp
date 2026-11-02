@@ -15,6 +15,15 @@ The profile name defaults to the host name with dots replaced by dashes (`helpde
 
 A base URL may have a trailing slash or a path prefix behind a reverse proxy, such as `https://example.com/helpdesk/`.
 
+## Checking the setup
+
+```bash
+ldesk doctor
+ldesk doctor --json --timeout 60
+```
+
+`ldesk doctor` prints one line per check, each ok, warn or fail: the Node version and the path of the running `ldesk`, the profile in effect and whether its server answers (as `ldesk status`), and the LibreDesk entries in `~/.claude.json` (user scope and the local scope of the current folder) and `./.mcp.json`. It starts every entry exactly as configured, sends the MCP `initialize` request and shows the answer, or the exit code and the last lines the server printed. Run it in the folder where the MCP client runs, because local and project entries depend on it. When an entry fails but `node` with the running `ldesk` works, it prints the `claude mcp add` line that uses that. Env values from the config are never printed, only their names. Each launch may take 10 seconds; `--timeout` changes that, which helps with `npx` on its first run. On Windows a command without an extension, such as `ldesk` or `npx`, is started through `cmd.exe` so that its `.cmd` or `.exe` shim is found on PATH.
+
 ## Profiles
 
 A profile is a named URL plus key and secret. The profile for a command is chosen in this order:
@@ -59,7 +68,7 @@ Running `ldesk` with no arguments in a terminal starts interactive mode (also `l
 - `null` clears a field that allows it, for example `--parent-id null`.
 - A required value you leave out is asked for in a terminal and is an error otherwise.
 - Operations that publish, take something offline, cost money or delete data ask for confirmation first, and their `--help` says "Asks for confirmation" and when. Without a terminal they fail and name `--yes`, which confirms without asking. `--yes` is listed only on those commands; the others accept it and ignore it.
-- Exit codes: 0 success, 1 error, 130 cancelled. `ldesk status` exits 1 when no profile is set up or the server does not answer.
+- Exit codes: 0 success, 1 error, 130 cancelled. `ldesk status` exits 1 when no profile is set up or the server does not answer. `ldesk doctor` exits 1 when any check fails.
 
 ## Help center and collections
 

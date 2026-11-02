@@ -33,7 +33,7 @@ Every endpoint is declared once as an `Operation` (`src/ops/define.ts`, built wi
 - `src/ops/merge.ts` has `mergeForUpdate`, the read-modify-write helper for updates.
 - `src/http.ts` is the only code that talks to the network: auth header `Authorization: token <key>:<secret>`, base URL normalisation, response envelope unwrapping, readable errors for non-JSON responses.
 - `src/config.ts`, `src/context.ts` store profiles and resolve the one in effect (flag, the three env vars, `LIBREDESK_PROFILE`, project link, active profile).
-- `src/commands/*` are the hand-written commands: login, profile, status, request, mcp.
+- `src/commands/*` are the hand-written commands: login, profile, status, doctor, request, mcp. `doctor` launches the client's configured server entries through `src/services/mcp-probe.ts`, whose spawn and stop are injected in tests, so no unit test starts a process.
 - `src/services/*` hold the logic behind those commands, kept free of printing.
 - `src/mcp/server.ts` registers the tools, reads `LIBREDESK_TOOLSETS`, and starts stdio. `src/mcp/instructions.ts` is the text clients put into the model's system prompt.
 - `src/content/markdown.ts` converts article content between markdown and the HTML LibreDesk stores.

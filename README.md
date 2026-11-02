@@ -50,6 +50,8 @@ Add the server to your MCP client config, for example `.mcp.json` in your projec
 
 The `env` block is optional. Leave it out and the server uses the login stored by `ldesk login`, which keeps the secret out of the config file. For more setup variants and to limit the tools, see [MCP server](docs/mcp.md).
 
+If the client cannot connect to the server, run `ldesk doctor` in the folder where the client runs. It starts the server the way the client does, shows why it fails, and prints a `claude mcp add` line that works.
+
 ## Documentation
 
 - [CLI reference](docs/cli.md): profiles, conventions for scripts and agents, every command.
