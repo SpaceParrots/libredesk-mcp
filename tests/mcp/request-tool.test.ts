@@ -42,6 +42,20 @@ describe("libredesk_request", () => {
     expect(text(res)).toContain("Known domains: help-center, articles");
   });
 
+  it("call with a query string in the path points to the query field, not CLI flags", async () => {
+    const res = await dispatchAction(requestActions(DOMAINS), { action: "call", method: "GET", path: "/api/v1/tags?a=1" });
+    expect(res.isError).toBe(true);
+    expect(text(res)).toContain("query field");
+    expect(text(res)).not.toContain("--query");
+  });
+
+  it("call with a disallowed path does not mention shell workarounds", async () => {
+    const res = await dispatchAction(requestActions(DOMAINS), { action: "call", method: "GET", path: "/admin" });
+    expect(res.isError).toBe(true);
+    expect(text(res)).toContain("/api/v1/");
+    expect(text(res)).not.toContain("MSYS_NO_PATHCONV");
+  });
+
   it("call DELETE without confirm returns an error result", async () => {
     const fetchImpl = vi.fn();
     vi.stubGlobal("fetch", fetchImpl);
