@@ -121,16 +121,34 @@ function descriptionOf(schema: Schema): string {
   return "";
 }
 
+/** One action's use of a shared field. */
+interface FieldUse {
+  readonly action: string;
+  readonly description: string;
+  readonly required: boolean;
+}
+
+interface UseGroup {
+  readonly description: string;
+  readonly actions: readonly string[];
+  readonly required: number;
+}
+
 /**
  * One description for a field several actions share. When the actions describe it differently,
- * the most common description comes first and the others are named by action.
+ * the description of the actions that require the field leads (ties: the most common one), and
+ * every other description is named by its actions. So the unqualified lead never tells the model
+ * to omit a field some action needs.
  */
-function mergedDescription(uses: readonly { readonly action: string; readonly description: string }[]): string {
-  const groups = new Map<string, string[]>();
-  for (const { action, description } of uses) groups.set(description, [...(groups.get(description) ?? []), action]);
-  const [first, ...others] = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
+function mergedDescription(uses: readonly FieldUse[]): string {
+  const groups = new Map<string, UseGroup>();
+  for (const { action, description, required } of uses) {
+    const group = groups.get(description) ?? { description, actions: [], required: 0 };
+    groups.set(description, { description, actions: [...group.actions, action], required: group.required + (required ? 1 : 0) });
+  }
+  const [first, ...others] = [...groups.values()].sort((a, b) => b.required - a.required || b.actions.length - a.actions.length);
   if (first === undefined) return "";
-  return [first[0], ...others.map(([description, names]) => `For ${names.join(", ")}: ${description}`)].filter(Boolean).join(" ");
+  return [first.description, ...others.map((g) => `For ${g.actions.join(", ")}: ${g.description}`)].filter(Boolean).join(" ");
 }
 
 /**
@@ -139,11 +157,11 @@ function mergedDescription(uses: readonly { readonly action: string; readonly de
  * share keeps the first action's schema; per-action validation still uses each action's own.
  */
 export function mergeShapes(actions: ActionMap): z.ZodRawShape {
-  const fields = new Map<string, { schema: Schema; uses: { action: string; description: string }[] }>();
+  const fields = new Map<string, { schema: Schema; uses: FieldUse[] }>();
   for (const [action, def] of Object.entries(actions)) {
     for (const [key, schema] of Object.entries(def.shape)) {
       const entry = fields.get(key) ?? { schema, uses: [] };
-      fields.set(key, { ...entry, uses: [...entry.uses, { action, description: descriptionOf(schema) }] });
+      fields.set(key, { ...entry, uses: [...entry.uses, { action, description: descriptionOf(schema), required: isRequired(schema) }] });
     }
   }
   return Object.fromEntries(

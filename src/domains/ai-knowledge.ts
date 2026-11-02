@@ -134,7 +134,7 @@ const snippetUpdate = defineOperation({
 const snippetImportUrl = defineOperation({
   name: "snippet_import_url",
   group: "snippet",
-  summary: "Fetch a web page and add its readable text as a snippet.",
+  summary: "Import a web page's readable text as a snippet.",
   method: "POST",
   path: "/api/v1/ai/snippets/import-url",
   input: {

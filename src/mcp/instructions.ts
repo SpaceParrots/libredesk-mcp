@@ -21,4 +21,4 @@ Write article content as markdown. When get returned content_format "html", edit
 
 Use libredesk_lookup for ids of agents, teams, inboxes and the like. For anything else, find the endpoint with libredesk_request action catalog, then use action call.
 
-Actions marked CAUTION or DESTRUCTIVE change public pages or delete data: confirm them with the user first.`;
+Actions marked CAUTION or DESTRUCTIVE change public pages, delete data or cost money: confirm them with the user first.`;

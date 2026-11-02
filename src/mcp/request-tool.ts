@@ -21,7 +21,7 @@ export function requestActions(domains: readonly Domain[]): ActionMap {
       summary: "Send one request. DESTRUCTIVE for DELETE: needs confirm.",
       shape: {
         method: z.enum(["GET", "POST", "PUT", "DELETE"]).describe("HTTP method."),
-        path: z.string().describe('Path under /api/v1/, for example "/api/v1/help-centers/3".'),
+        path: z.string().describe('Path under /api/v1/, such as "/api/v1/help-centers/3".'),
         query: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional().describe("Query parameters."),
         body: z.unknown().optional().describe("JSON request body."),
         confirm: z.boolean().optional().describe("true for DELETE, once the user agreed."),

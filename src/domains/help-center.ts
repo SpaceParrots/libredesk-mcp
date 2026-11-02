@@ -61,7 +61,7 @@ const helpCenterSettings = {
     .array(z.string())
     .optional()
     .describe(
-      'Locale codes (from locales) content can use; locales with articles cannot be removed.',
+      'Locale codes (from locales) content can use; ones with articles cannot be removed.',
     ),
   theme: z
     .record(z.string(), z.unknown())
@@ -81,7 +81,7 @@ const helpCenterSettings = {
     .int()
     .nullable()
     .optional()
-    .describe("Live chat inbox shown as widget on the public pages; null removes it."),
+    .describe("Live chat inbox for the public chat widget; null removes it."),
 };
 
 /** Optional settings shared by collection create and update. */

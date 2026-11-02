@@ -22,7 +22,7 @@ function listOf(keys: readonly string[]): (data: unknown) => Record<string, unkn
 
 const me = defineOperation({
   name: "me",
-  summary: "The agent of the API key, with roles and permissions.",
+  summary: "The API key's agent, with roles and permissions.",
   method: "GET",
   path: "/api/v1/agents/me",
   input: {},
