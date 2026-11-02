@@ -237,4 +237,10 @@ describe("articles domain", () => {
     expect(calls[0]?.path).toBe("/api/v1/collections/2/article-sort-order");
     expect(calls[0]?.body).toEqual({ "11": 0, "12": 1 });
   });
+  it("update refuses to merge into a response that is not a record", async () => {
+    const { fetchImpl, calls } = fakeFetch(() => "<html>Welcome</html>");
+    await expect(runOperation(op("update"), { id: 4, title: "New" }, { profile, fetchImpl })).rejects.toMatchObject({ hint: expect.stringContaining("base URL") });
+    expect(calls.filter((c) => c.method === "PUT")).toEqual([]);
+  });
+
 });

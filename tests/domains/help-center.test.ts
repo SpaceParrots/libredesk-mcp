@@ -270,4 +270,18 @@ describe("help center domain", () => {
     expect(JSON.stringify(result)).not.toContain("long body");
     expect(JSON.stringify(result)).not.toContain("short");
   });
+  it("update refuses to merge into a response that is not a record", async () => {
+    const { fetchImpl, calls } = fakeFetch(() => "<html>Welcome</html>");
+    await expect(runOperation(op("update"), { id: 1, page_title: "Help" }, { profile, fetchImpl })).rejects.toMatchObject({ hint: expect.stringContaining("base URL") });
+    expect(calls.filter((c) => c.method === "PUT")).toEqual([]);
+  });
+
+  it("collection_update refuses a collection list that is not a list", async () => {
+    const { fetchImpl, calls } = fakeFetch(() => "<html>Welcome</html>");
+    await expect(
+      runOperation(op("collection_update"), { help_center_id: 1, id: 3, name: "x" }, { profile, fetchImpl }),
+    ).rejects.toMatchObject({ hint: expect.stringContaining("base URL") });
+    expect(calls.filter((c) => c.method === "PUT")).toEqual([]);
+  });
+
 });

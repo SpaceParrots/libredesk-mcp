@@ -160,4 +160,30 @@ describe("ai knowledge domain", () => {
     expect(calls[0]?.path).toBe("/api/v1/ai/faq-learning");
     expect(calls[0]?.body).toEqual({ enabled: false });
   });
+  it("snippet_update refuses a snippet list that is not a list", async () => {
+    const { fetchImpl, calls } = fakeFetch(() => "<html>Welcome</html>");
+    await expect(runOperation(op("snippet_update"), { id: 3, title: "x" }, { profile, fetchImpl })).rejects.toMatchObject({
+      hint: expect.stringContaining("base URL"),
+    });
+    expect(calls.filter((c) => c.method === "PUT")).toEqual([]);
+  });
+
+  it("snippet_update keeps enabled false on a disabled snippet when only the title changes", async () => {
+    const { fetchImpl, calls } = fakeFetch(respondWithData);
+    await runOperation(op("snippet_update"), { id: 4, title: "Delivery" }, { profile, fetchImpl });
+    expect(calls[1]?.body).toEqual({ title: "Delivery", content: `Parcels take days ${long}`, enabled: false });
+  });
+
+  it("snippet_update changes only enabled", async () => {
+    const { fetchImpl, calls } = fakeFetch(respondWithData);
+    await runOperation(op("snippet_update"), { id: 3, enabled: false }, { profile, fetchImpl });
+    expect(calls[1]?.body).toEqual({ title: "Refunds", content: "Full policy", enabled: false });
+  });
+
+  it("snippet_update changes only content", async () => {
+    const { fetchImpl, calls } = fakeFetch(respondWithData);
+    await runOperation(op("snippet_update"), { id: 3, content: "New policy" }, { profile, fetchImpl });
+    expect(calls[1]?.body).toEqual({ title: "Refunds", content: "New policy", enabled: true });
+  });
+
 });

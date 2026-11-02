@@ -7,7 +7,8 @@
 import { z } from "zod";
 import { NotFoundError } from "../errors.js";
 import { defineDomain, defineOperation } from "../ops/define.js";
-import { mergeForUpdate } from "../ops/merge.js";
+import { isRecord } from "../guards.js";
+import { mergeForUpdate, requireList } from "../ops/merge.js";
 
 const PERMISSION = "help_center:manage";
 
@@ -315,7 +316,7 @@ const collectionUpdate = defineOperation({
   permission: PERMISSION,
   undocumented: true,
   run: async (input, ctx) => {
-    const collections = asRecords(await ctx.call("GET", `/api/v1/help-centers/${input.help_center_id}/collections`));
+    const collections = requireList(await ctx.call("GET", `/api/v1/help-centers/${input.help_center_id}/collections`), "the collection list").filter(isRecord);
     const current = collections.find((c) => c.id === input.id);
     if (current === undefined) {
       throw new NotFoundError(`Collection ${input.id} not found in help center ${input.help_center_id}`, {

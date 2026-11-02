@@ -49,7 +49,7 @@ describe("lookup domain", () => {
   });
 
   it.each(cases)("%s sends GET %s (undocumented: %s)", async (name, path, undocumented) => {
-    const { fetchImpl, calls } = fakeFetch([]);
+    const { fetchImpl, calls } = fakeFetch(name === "me" ? {} : []);
     await runOperation(op(name), {}, { profile, fetchImpl });
     expect(calls).toEqual([{ method: "GET", path, search: "" }]);
     expect(op(name).undocumented === true).toBe(undocumented);
@@ -119,8 +119,19 @@ describe("lookup domain", () => {
     ).toEqual([{ id: 1, key: "plan", name: "Plan", applies_to: "contact", data_type: "list", values: ["a"] }]);
   });
 
-  it("a non-array response gives an empty list", async () => {
-    const result = await runOperation(op("tags"), {}, { profile, fetchImpl: fakeFetch(null).fetchImpl });
-    expect(result).toEqual([]);
+  it("a non-array response throws with the base URL hint instead of becoming an empty list", async () => {
+    await expect(runOperation(op("tags"), {}, { profile, fetchImpl: fakeFetch(null).fetchImpl })).rejects.toMatchObject({
+      hint: expect.stringContaining("base URL"),
+    });
+    await expect(runOperation(op("tags"), {}, { profile, fetchImpl: fakeFetch("<html></html>").fetchImpl })).rejects.toThrow();
+  });
+
+  it("non-object items in a list are dropped", async () => {
+    const result = await runOperation(op("tags"), {}, { profile, fetchImpl: fakeFetch([{ id: 1, name: "bug" }, "junk", null, 7]).fetchImpl });
+    expect(result).toEqual([{ id: 1, name: "bug" }]);
+  });
+
+  it("me throws when the response is not an agent object", async () => {
+    await expect(runOperation(op("me"), {}, { profile, fetchImpl: fakeFetch([]).fetchImpl })).rejects.toThrow();
   });
 });
