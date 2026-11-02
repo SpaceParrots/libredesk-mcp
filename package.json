@@ -21,6 +21,7 @@
     "test:coverage": "vitest run --coverage",
     "test:live": "vitest run --config vitest.live.config.ts",
     "docs:undocumented": "node scripts/list-undocumented.mjs",
+    "prepack": "npm run build",
     "verify": "npm run lint && npm run typecheck && npm test"
   },
   "keywords": [
@@ -39,6 +40,14 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/SpaceParrots/libredesk-mcp.git"
+  },
+  "homepage": "https://github.com/SpaceParrots/libredesk-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/SpaceParrots/libredesk-mcp/issues"
+  },
+  "author": "SpaceParrots",
+  "publishConfig": {
+    "access": "public"
   },
   "license": "MIT",
   "engines": {
