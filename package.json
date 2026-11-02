@@ -10,6 +10,9 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
+    "dev:up": "docker compose -f docker-compose.dev.yml -p ldesk-dev up -d",
+    "dev:down": "docker compose -f docker-compose.dev.yml -p ldesk-dev down",
+    "dev:bootstrap": "node dev/bootstrap.mjs",
     "start": "node dist/index.js",
     "lint": "eslint src/ tests/",
     "typecheck": "tsc --noEmit",
