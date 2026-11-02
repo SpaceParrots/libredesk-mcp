@@ -21,4 +21,4 @@ Write article content as markdown. When get returned content_format "html", edit
 
 Use libredesk_lookup for ids of agents, teams, inboxes and the like. For anything else, find the endpoint with libredesk_request action catalog, then use action call.
 
-The other tools create and edit drafts. Publishing, help center online state and FAQ learning are in libredesk_publish, deletes in libredesk_delete; both take lists of ids where noted. They change public pages, delete data or cost money: confirm them with the user first. Write actions return a short record; use get for the full one.`;
+The other tools never publish: new articles are drafts. Their edits still take effect at once: editing a published article changes the live page, and snippets are used by assistants as soon as they are enabled. Publishing, help center online state and FAQ learning are in libredesk_publish, deletes in libredesk_delete; both take lists of ids where noted. They change public pages, delete data or cost money: confirm them with the user first. Write actions return a short record; use get for the full one.`;
