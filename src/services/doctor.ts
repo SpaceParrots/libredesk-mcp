@@ -60,7 +60,15 @@ export interface DoctorDeps {
   readonly stop?: StopFn;
   /** How long each launch may take to answer `initialize`. */
   readonly timeoutMs?: number;
+  /**
+   * Whether to start an entry of `./.mcp.json`, given its name and command line. That file comes
+   * with the folder, for example a cloned repo, so its command is not run unless this says yes.
+   * Defaults to no.
+   */
+  readonly trustProject?: (name: string, command: string) => Promise<boolean>;
 }
+
+const NO_TRUST = (): Promise<boolean> => Promise.resolve(false);
 
 /** Default wait for a launched server's answer. */
 export const DEFAULT_LAUNCH_TIMEOUT_MS = 10_000;
@@ -261,6 +269,16 @@ export async function runDoctor(deps: DoctorDeps = {}): Promise<DoctorReport> {
       ...(Object.keys(spec.env).length > 0 ? [`env keys: ${Object.keys(spec.env).join(", ")}`] : []),
       `resolves to: ${resolved ?? "nothing on PATH"}`,
     ].map((note) => redactText(note, secretsOf(spec)));
+    if (entry.scope === "project" && !(await (deps.trustProject ?? NO_TRUST)(entry.name, redactText(commandLine(spec.command, spec.args), secretsOf(spec))))) {
+      checks.push({
+        name: `launch ${entry.name}`,
+        state: "warn",
+        detail: "not started: the command comes from ./.mcp.json in this folder",
+        notes,
+        fix: ["Check the command above, then run ldesk doctor in a terminal and confirm, or pass --yes."],
+      });
+      continue;
+    }
     const check = outcome(`launch ${entry.name}`, await probe(spec, ctx), notes, secretsOf(spec));
     if (check.state !== "fail") {
       checks.push(check);

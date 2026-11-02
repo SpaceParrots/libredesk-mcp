@@ -12,7 +12,7 @@ import { InputError } from "../errors.js";
 import { DEFAULT_LAUNCH_TIMEOUT_MS, runDoctor, type DoctorDeps, type DoctorReport } from "../services/doctor.js";
 
 /** What tests may replace in {@link runDoctor}; the flags set the rest. */
-export type DoctorOverrides = Omit<DoctorDeps, "profile" | "timeoutMs">;
+export type DoctorOverrides = Omit<DoctorDeps, "profile" | "timeoutMs" | "trustProject">;
 
 const STATE_WIDTH = 6;
 
@@ -48,16 +48,22 @@ export function registerDoctor(program: Command, deps: CliDeps, overrides: Docto
       [
         "Check Node, the profile, and how the MCP client starts the server.",
         "Prints the Node version and the path of this ldesk, the profile in effect and whether its server answers (as ldesk status), and the LibreDesk entries in ~/.claude.json (user scope and this folder's local scope) and ./.mcp.json. It starts each entry exactly as configured, sends the MCP initialize request and reports the answer, or the exit code and the last lines the server printed. When an entry fails but node with this ldesk works, it prints the claude mcp add line that uses it. Env values from the config are never printed, only their names.",
-        "Run it in the folder where the MCP client runs, since local and project entries depend on it.",
+        "Run it in the folder where the MCP client runs, since local and project entries depend on it. An entry of ./.mcp.json comes with the folder, so doctor shows its command and asks before starting it; without a terminal it is skipped unless --yes is given.",
         "Exits 1 when any check fails.",
       ].join("\n\n"),
     )
     .option("--json", "print the result as JSON")
     .option("--profile <name>", "use this profile for the profile check")
     .option("--timeout <seconds>", `how long each launch may take to answer (default ${DEFAULT_LAUNCH_TIMEOUT_MS / 1000})`)
-    .action(async (options: { json?: boolean; profile?: string; timeout?: string }) => {
+    .option("--yes", "start entries of ./.mcp.json without asking")
+    .action(async (options: { json?: boolean; profile?: string; timeout?: string; yes?: boolean }) => {
       try {
-        const report = await runDoctor({ ...overrides, profile: options.profile, timeoutMs: parseTimeout(options.timeout) });
+        const trustProject = (name: string, command: string): Promise<boolean> => {
+          if (options.yes === true) return Promise.resolve(true);
+          if (!deps.isTTY) return Promise.resolve(false);
+          return deps.prompt.confirm({ message: `Start "${name}" from ./.mcp.json? It runs: ${command}`, initialValue: false });
+        };
+        const report = await runDoctor({ ...overrides, profile: options.profile, timeoutMs: parseTimeout(options.timeout), trustProject });
         const json = options.json === true;
         deps.print(json ? report : formatDoctorReport(report), { json });
         // Set rather than exit, so the report is flushed before the process ends.

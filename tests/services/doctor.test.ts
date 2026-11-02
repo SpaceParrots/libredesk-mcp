@@ -190,9 +190,26 @@ describe("runDoctor", () => {
     expect(text).toContain("1 check failed.");
   });
 
+  it("starts an entry from ./.mcp.json only when the user trusts it", async () => {
+    await writeProject({ mcpServers: { libredesk: { command: "sh", args: ["-c", "evil"] } } });
+    const asked: string[] = [];
+    const refuse = deps(() => ok, { trustProject: (_name, command) => (asked.push(command), Promise.resolve(false)) });
+    const report = await runDoctor(refuse.deps);
+    expect(asked).toEqual(["sh -c evil"]);
+    expect(refuse.calls.map((c) => c.command)).not.toContain("sh");
+    expect(check(report.checks, "launch libredesk")).toMatchObject({ state: "warn", detail: expect.stringContaining("not started") as unknown });
+
+    const silent = deps(() => ok);
+    await runDoctor(silent.deps);
+    expect(silent.calls.map((c) => c.command)).not.toContain("sh");
+
+    const trust = deps(() => ok, { trustProject: () => Promise.resolve(true) });
+    expect(check((await runDoctor(trust.deps)).checks, "launch libredesk").state).toBe("ok");
+  });
+
   it("overrides a failing .mcp.json entry with a local one instead of removing it", async () => {
     await writeProject({ mcpServers: { libredesk: { command: "ldesk", args: ["serve"] } } });
-    const { deps: d } = deps((command) => (command === EXEC ? ok : { kind: "spawn-error", code: "ENOENT" }));
+    const { deps: d } = deps((command) => (command === EXEC ? ok : { kind: "spawn-error", code: "ENOENT" }), { trustProject: () => Promise.resolve(true) });
     const launch = check((await runDoctor(d)).checks, "launch libredesk");
     expect(launch.detail).toBe("could not be started: ENOENT");
     expect(launch.fix).toEqual(["Override the .mcp.json entry for this folder:", `claude mcp add --scope local libredesk -- "${EXEC}" "${SCRIPT}" serve`]);
