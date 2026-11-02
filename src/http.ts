@@ -117,10 +117,10 @@ export async function request<T = unknown>(
     });
     text = await response.text();
   } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    throw new NetworkError(redact(`${method} ${url} failed: ${reason}`), {
+    const reason = redact(error instanceof Error ? error.message : String(error));
+    throw new NetworkError(`${method} ${url} failed: ${reason}`, {
       hint: "Check the LibreDesk URL and that the server is reachable.",
-      cause: error,
+      cause: new Error(reason),
     });
   }
 
