@@ -16,9 +16,43 @@ describe("rawRequest", () => {
   });
 
   it("rejects paths outside /api/v1", async () => {
-    for (const path of ["/admin", "/api/v2/x", "api/v1/x", "/api/v1/../admin", "/api/v1/", "/healthz"]) {
-      await expect(rawRequest({ method: "GET", path }, { profile, fetchImpl: ok() })).rejects.toThrow(InputError);
+    const bad = [
+      "/admin",
+      "/api/v2/x",
+      "/api/v1/../admin",
+      "/api/v1/%2e%2e/admin",
+      "/api/v1/%2E%2E/admin",
+      "/api/v1/..%2fadmin",
+      "/api/v1/..\\admin",
+      "/api/v1/",
+      "/healthz",
+    ];
+    for (const path of bad) {
+      const fetchImpl = ok();
+      await expect(rawRequest({ method: "GET", path }, { profile, fetchImpl })).rejects.toThrow(InputError);
+      expect(fetchImpl).not.toHaveBeenCalled();
     }
+  });
+
+  it("rejects ? and # in the path and points to --query", async () => {
+    for (const path of ["/api/v1/x?a=1", "/api/v1/x#frag"]) {
+      await expect(rawRequest({ method: "GET", path }, { profile, fetchImpl: ok() })).rejects.toMatchObject({
+        hint: expect.stringContaining("--query") as string,
+      });
+    }
+  });
+
+  it("accepts a path without the leading slash", async () => {
+    const fetchImpl = ok();
+    await rawRequest({ method: "GET", path: "api/v1/tags" }, { profile, fetchImpl });
+    await rawRequest({ method: "GET", path: "health" }, { profile, fetchImpl });
+    expect(fetchImpl.mock.calls.map((c) => c[0])).toEqual(["https://desk.example/api/v1/tags", "https://desk.example/health"]);
+  });
+
+  it("names the Git Bash workaround in the error hint", async () => {
+    await expect(rawRequest({ method: "GET", path: "/admin" }, { profile, fetchImpl: ok() })).rejects.toMatchObject({
+      hint: expect.stringContaining("MSYS_NO_PATHCONV=1") as string,
+    });
   });
 
   it("sends query and body and returns the data", async () => {
