@@ -77,6 +77,22 @@ describe("domainActions", () => {
     expect(actions.save?.summary).toBe("Save a thing.");
   });
 
+  it("notes an escalation in the summary, and never the CLI help", () => {
+    const publish = defineOperation({
+      ...save,
+      name: "publish",
+      input: { title: z.string().describe("Title."), status: z.enum(["draft", "published"]).optional().describe("Status.") },
+      escalate: { when: (values) => values.status === "published", condition: "status is published", impact: "caution", effect: "Goes public." },
+      cli: { examples: ["ldesk things publish --title T"], notes: ["A CLI-only note."] },
+    });
+    const summary = domainActions({ ...things, operations: [publish] }).publish?.summary;
+    expect(summary).toBe("Save a thing. CAUTION when status is published: Goes public.");
+    const recorded: RecordedTool[] = [];
+    registerDomainTool(recordingServer(recorded), { ...things, operations: [publish] });
+    expect(JSON.stringify(recorded[0]?.description)).not.toContain("CLI-only");
+    expect(JSON.stringify(recorded[0]?.description)).not.toContain("ldesk things");
+  });
+
   it("leaves out operations with mcp: false", () => {
     expect(Object.keys(domainActions(things))).toEqual(["whoami", "save", "toggle", "delete"]);
   });

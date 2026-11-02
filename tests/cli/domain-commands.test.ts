@@ -158,13 +158,130 @@ describe("addDomainCommands", () => {
     expect(h.runs[0]?.values).toMatchObject({ help_center_id: 1, id: 5, name: "x" });
   });
 
-  it("help shows summary, undocumented marker and effect", () => {
-    const h = harness();
-    const articles = h.program.commands.find((c) => c.name() === "articles");
-    const del = articles?.commands.find((c) => c.name() === "delete");
-    const help = del?.helpInformation() ?? "";
+  it("help shows the summary and the confirmation line, without a per-command undocumented marker", () => {
+    const help = helpOf(harness(), "articles", "delete");
     expect(help).toContain("Delete an article.");
-    expect(help).toContain("[undocumented API]");
-    expect(help).toContain("Deletes the article. Linked translations stay.");
+    expect(help).not.toContain("[undocumented API]");
+    expect(help).toContain("Asks for confirmation: Deletes the article. Linked translations stay.");
+  });
+
+  it("says once in the domain help that the endpoints are undocumented", () => {
+    const help = flat(helpOf(harness(), "articles"));
+    expect(help).toContain("Uses LibreDesk endpoints that are not in the public API docs (built against 2.9.2).");
+    expect(help).not.toContain("[undocumented API]");
+  });
+
+  it("renders examples and notes after the options", () => {
+    const help = helpOf(harness(), "help-center", "list");
+    const options = help.indexOf("Options:");
+    const notes = help.indexOf("Notes:");
+    const examples = help.indexOf("Examples:");
+    expect(options).toBeGreaterThan(-1);
+    expect(notes).toBeGreaterThan(options);
+    expect(examples).toBeGreaterThan(notes);
+    expect(help).toMatch(/Examples:\n {2}ldesk help-center list\n/);
+  });
+
+  it("lists --yes only on commands that may ask for confirmation", () => {
+    const h = harness();
+    expect(helpOf(h, "help-center", "list")).not.toContain("--yes");
+    expect(helpOf(h, "articles", "update")).not.toContain("--yes");
+    expect(flat(helpOf(h, "articles", "delete"))).toContain("--yes confirm without asking (required when no terminal is attached)");
+    expect(helpOf(h, "articles", "create")).toContain("--yes");
+  });
+
+  it("still accepts --yes on commands that never ask", async () => {
+    const h = harness();
+    await exec(h, "help-center", "list", "--yes");
+    expect(h.runs).toHaveLength(1);
+  });
+
+  it("shows the flag a user passes for booleans, with a matching description", () => {
+    const h = harness();
+    const create = flat(helpOf(h, "articles", "create"));
+    expect(create).toContain("--no-ai-enabled Do not let AI assistants answer from it once published. (ai-enabled is on by default)");
+    expect(create).not.toContain("--ai-enabled ");
+    const collection = flat(helpOf(h, "help-center", "collection", "create"));
+    expect(collection).toContain("--is-published Publish the collection. New collections start unpublished. (off by default)");
+    expect(collection).not.toContain("--no-is-published");
+    const update = flat(helpOf(h, "help-center", "collection", "update"));
+    expect(update).toContain("--is-published Publish the collection.");
+    expect(update).toContain("--no-is-published Do not publish the collection.");
+    for (const help of [create, collection, update]) expect(help).not.toMatch(/\(default: (true|false)\)/);
+  });
+
+  it("shows required positionals as <name> in usage, arguments and the group listing", () => {
+    const h = harness();
+    const update = helpOf(h, "help-center", "collection", "update");
+    expect(update).toContain("help-center collection update [options] <help-center-id> <id>\n");
+    expect(flat(update)).toContain("<help-center-id> Help center id. (required; also --help-center-id <value>)");
+    expect(flat(update)).toContain("<id> Collection id. (required; also --id <value>)");
+    expect(update.match(/\(required/g)).toHaveLength(2);
+    expect(helpOf(h, "help-center", "collection")).toMatch(/\n {2}update \[options\] <help-center-id> <id> +/);
+  });
+
+  it("leaves hidden fields out of the help but accepts them", async () => {
+    const h = harness();
+    expect(helpOf(h, "articles", "get")).not.toContain("--collection-id");
+    expect(helpOf(h, "articles", "delete")).not.toContain("--collection-id");
+    await exec(h, "articles", "get", "42", "--collection-id", "3");
+    expect(h.runs[0]?.values).toEqual({ id: 42, collection_id: 3 });
+  });
+
+  it("lists one-line summaries in group listings, without effect lines", () => {
+    const listing = helpOf(harness(), "help-center", "collection");
+    expect(listing).not.toContain("Effect:");
+    expect(listing).not.toContain("Asks for confirmation");
+    expect(listing).toMatch(/\n {2}delete \[options\] <help-center-id> <id> +Delete a collection\.\n/);
+    expect(listing).not.toContain("collection commands");
+  });
+
+  it("names sibling commands, not MCP actions, and states a default once", () => {
+    const h = harness();
+    const update = flat(helpOf(h, "articles", "update"));
+    expect(update).toContain("Publish with set-status");
+    expect(update).not.toContain("set_status");
+    expect(flat(helpOf(h, "articles"))).not.toContain("set_status");
+    const get = flat(helpOf(h, "articles", "get"));
+    expect(get).toContain('"markdown" (default)');
+    expect(get).not.toContain("(default: markdown)");
+  });
+
+  it("says Pass null to clear it for nullable fields", () => {
+    expect(helpOf(harness(), "help-center", "collection", "update")).toMatch(/--parent-id <value>[^]*Pass null to clear it\./);
+  });
+
+  it("non-TTY create with status published needs --yes, like set_status", async () => {
+    const h = harness();
+    await exec(h, "articles", "create", "7", "--title", "T", "--content", "C", "--status", "published");
+    expect(h.runs).toHaveLength(0);
+    expect(h.errors[0]).toBeInstanceOf(ConfirmationRequiredError);
+    expect((h.errors[0] as Error).message).toContain("public");
+    await exec(h, "articles", "create", "7", "--title", "T", "--content", "C", "--status", "published", "--yes");
+    expect(h.runs).toHaveLength(1);
+  });
+
+  it("create as draft never asks", async () => {
+    const h = harness({ isTTY: true });
+    await exec(h, "articles", "create", "7", "--title", "T", "--content", "C");
+    await exec(h, "articles", "create", "7", "--title", "T", "--content", "C", "--status", "draft");
+    expect(h.errors).toEqual([]);
+    expect(h.runs).toHaveLength(2);
+  });
+
+  it("create help says when it asks for confirmation", () => {
+    expect(flat(helpOf(harness(), "articles", "create"))).toContain("Asks for confirmation when status is published: Publishing makes the article public");
   });
 });
+
+function helpOf(h: Harness, ...path: string[]): string {
+  let command: Command | undefined = h.program;
+  for (const name of path) command = command?.commands.find((c) => c.name() === name);
+  if (command === undefined) throw new Error(`no command ${path.join(" ")}`);
+  return command.helpInformation();
+}
+
+/** Help text with every run of whitespace collapsed, so wrapping does not matter. */
+function flat(help: string): string {
+  return help.replaceAll(/\s+/g, " ");
+}

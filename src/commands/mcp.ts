@@ -8,6 +8,7 @@ import { join } from "node:path";
 import type { Command } from "commander";
 import { Option } from "commander";
 import type { CliDeps } from "../cli/domain-commands.js";
+import { confirmationLine, YES_DESCRIPTION } from "../cli/help.js";
 import { handleCliError, printInfo, printSuccess } from "../cli/output.js";
 import { loadConfig, profileNotFound } from "../config.js";
 import { ENV } from "../constants.js";
@@ -67,13 +68,16 @@ export function registerMcp(program: Command, deps: CliDeps): void {
   const mcp = program.command("mcp").description("Set up the MCP server in an MCP client");
   mcp
     .command("install")
-    .description("Add the LibreDesk MCP server to ./.mcp.json, or print a snippet for other clients")
+    .summary("Add the LibreDesk MCP server to ./.mcp.json, or print a snippet for other clients")
+    .description(
+      `Add the LibreDesk MCP server to ./.mcp.json, or print a snippet for other clients.\n\n${confirmationLine("--mode env writes the API secret into .mcp.json")}`,
+    )
     .addOption(new Option("--scope <scope>", "where to put it").choices(["project", "print"]).default("project"))
     .addOption(new Option("--mode <mode>", "pin a stored profile, or copy the credentials into the entry").choices(["profile", "env"]).default("profile"))
     .option("--npx", "run through npx instead of a global ldesk")
     .option("--toolsets <list>", "comma separated toolsets to expose")
     .option("--profile <name>", "profile to pin or copy (default: the active one)")
-    .option("--yes", "confirm writing a secret into .mcp.json")
+    .option("--yes", YES_DESCRIPTION)
     .option("--show-secret", "with --scope print, show the real API secret instead of a placeholder")
     .action(async (options: InstallOptions) => {
       try {

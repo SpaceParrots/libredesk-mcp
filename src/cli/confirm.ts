@@ -7,7 +7,7 @@
 
 import { ConfirmationRequiredError, DeclinedError, InputError } from "../errors.js";
 import { SECRET_KEYS } from "../mask.js";
-import type { Operation } from "../ops/define.js";
+import type { Impact, Operation } from "../ops/define.js";
 import { operationFields, type FieldInfo } from "../ops/fields.js";
 import { kebab } from "./flags.js";
 import type { PromptAdapter } from "./prompt.js";
@@ -81,18 +81,41 @@ export async function collectMissing(
   return collected;
 }
 
+/** The impact of one run and what it does. */
+export interface RunImpact {
+  readonly impact: Impact;
+  readonly effect: string;
+}
+
+function needsConfirmation(impact: Impact): boolean {
+  return impact === "caution" || impact === "destructive";
+}
+
+/** The impact a run of `op` with `values` has: the escalation when its condition holds, else the operation's own. */
+export function impactOf(op: Operation, values: Readonly<Record<string, unknown>>): RunImpact {
+  if (op.escalate?.when(values) === true) return { impact: op.escalate.impact, effect: op.escalate.effect };
+  return { impact: op.impact, effect: op.effect ?? op.summary };
+}
+
+/** True when some run of `op` asks for confirmation, so its command takes `--yes`. */
+export function mayAskConfirmation(op: Operation): boolean {
+  return needsConfirmation(op.impact) || (op.escalate !== undefined && needsConfirmation(op.escalate.impact));
+}
+
 /**
- * Ask for confirmation before a `caution` or `destructive` operation. `read` and `write`
- * operations pass. `--yes` passes. Without a TTY this throws {@link ConfirmationRequiredError};
- * with one it asks (default No) and a No throws {@link DeclinedError}.
+ * Ask for confirmation before a `caution` or `destructive` run: the operation's own impact, or
+ * its escalation when `values` meet the escalation's condition. `read` and `write` runs pass.
+ * `--yes` passes. Without a TTY this throws {@link ConfirmationRequiredError}; with one it asks
+ * (default No) and a No throws {@link DeclinedError}.
  */
 export async function confirmImpact(
   op: Operation,
+  values: Readonly<Record<string, unknown>>,
   deps: { yes: boolean; isTTY: boolean; prompt: PromptAdapter },
 ): Promise<void> {
-  if (op.impact !== "caution" && op.impact !== "destructive") return;
+  const { impact, effect } = impactOf(op, values);
+  if (!needsConfirmation(impact)) return;
   if (deps.yes) return;
-  const effect = op.effect ?? op.summary;
   if (!deps.isTTY) {
     throw new ConfirmationRequiredError(effect, { hint: "Pass --yes to confirm and run it." });
   }

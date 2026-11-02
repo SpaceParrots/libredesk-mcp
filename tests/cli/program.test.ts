@@ -236,6 +236,44 @@ describe("status", () => {
   });
 });
 
+describe("help", () => {
+  const flat = (text: string) => text.replaceAll(/\s+/g, " ");
+
+  it("root help has a section for scripts and agents", () => {
+    const help = createProgram(deps()).helpInformation();
+    expect(help).toContain("For scripts and agents:");
+    const text = flat(help);
+    expect(text).toContain("ldesk status");
+    expect(text).toContain("--json");
+    expect(text).toContain("--yes");
+    expect(text).toContain("@path");
+    expect(text).toContain("@@");
+    expect(text).toContain("null");
+    expect(text).toContain("Exit codes: 0 ok, 1 error, 130 cancelled.");
+    expect(text).toContain("ldesk catalog");
+    expect(text).toContain("interactive menu");
+    expect(help.split("\n").every((line) => line.length <= 80)).toBe(true);
+    expect(/^[\x20-\x7E\n]*$/.test(help)).toBe(true);
+  });
+
+  it("built-ins that confirm describe --yes the same way and say what they ask about", () => {
+    const program = createProgram(deps());
+    for (const path of [["login"], ["request"], ["mcp", "install"]]) {
+      const help = flat(helpOf(program, ...path));
+      expect(help, path.join(" ")).toContain("--yes confirm without asking (required when no terminal is attached)");
+      expect(help, path.join(" ")).toContain("Asks for confirmation:");
+    }
+    expect(helpOf(program, "status")).not.toContain("--yes");
+  });
+
+  it("group commands have a real description", () => {
+    const program = createProgram(deps());
+    for (const path of [["help-center", "collection"], ["knowledge", "snippet"], ["knowledge", "faq"], ["knowledge", "learning"]]) {
+      expect(helpOf(program, ...path), path.join(" ")).not.toMatch(/\w+ commands\n/);
+    }
+  });
+});
+
 function helpOf(program: Command, ...path: string[]): string {
   let command: Command | undefined = program;
   for (const name of path) command = command?.commands.find((c) => c.name() === name);

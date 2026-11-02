@@ -36,6 +36,7 @@ const me = defineOperation({
       teams: (Array.isArray(agent.teams) ? agent.teams : []).filter(isRecord).map((team) => pick(team, ["id", "name"])),
     };
   },
+  cli: { examples: ["ldesk lookup me", "ldesk lookup me --json"] },
 });
 
 const agents = defineOperation({
@@ -47,6 +48,7 @@ const agents = defineOperation({
   impact: "read",
   undocumented: true,
   present: listOf(["id", "first_name", "last_name", "email", "type", "enabled", "availability_status"]),
+  cli: { examples: ["ldesk lookup agents", "ldesk lookup agents --json"] },
 });
 
 const teams = defineOperation({
@@ -58,6 +60,7 @@ const teams = defineOperation({
   impact: "read",
   undocumented: true,
   present: listOf(["id", "name", "emoji"]),
+  cli: { examples: ["ldesk lookup teams"] },
 });
 
 const tags = defineOperation({
@@ -68,6 +71,7 @@ const tags = defineOperation({
   input: {},
   impact: "read",
   present: listOf(["id", "name"]),
+  cli: { examples: ["ldesk lookup tags"] },
 });
 
 const inboxes = defineOperation({
@@ -78,6 +82,10 @@ const inboxes = defineOperation({
   input: {},
   impact: "read",
   present: listOf(["id", "name", "channel", "enabled"]),
+  cli: {
+    notes: ["An inbox id is what `ldesk help-center update <id> --livechat-inbox-id` takes."],
+    examples: ["ldesk lookup inboxes"],
+  },
 });
 
 const statuses = defineOperation({
@@ -88,6 +96,7 @@ const statuses = defineOperation({
   input: {},
   impact: "read",
   present: listOf(["id", "name", "category"]),
+  cli: { examples: ["ldesk lookup statuses"] },
 });
 
 const priorities = defineOperation({
@@ -98,6 +107,7 @@ const priorities = defineOperation({
   input: {},
   impact: "read",
   present: listOf(["id", "name"]),
+  cli: { examples: ["ldesk lookup priorities"] },
 });
 
 const customAttributes = defineOperation({
@@ -114,6 +124,7 @@ const customAttributes = defineOperation({
   query: ["applies_to"],
   impact: "read",
   present: listOf(["id", "key", "name", "applies_to", "data_type", "values"]),
+  cli: { examples: ["ldesk lookup custom-attributes", "ldesk lookup custom-attributes --applies-to contact --json"] },
 });
 
 /** Read-only lookups of agents, teams, tags, inboxes, statuses, priorities and custom attributes. */
