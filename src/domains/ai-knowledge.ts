@@ -9,7 +9,8 @@
 import { z } from "zod";
 import { NotFoundError } from "../errors.js";
 import { defineDomain, defineOperation } from "../ops/define.js";
-import { mergeForUpdate } from "../ops/merge.js";
+import { isRecord } from "../guards.js";
+import { mergeForUpdate, requireList } from "../ops/merge.js";
 
 const PERMISSION = "ai:manage";
 
@@ -56,7 +57,7 @@ function presentSnippet(snippet: Record<string, unknown>): Record<string, unknow
 }
 
 async function findSnippet(id: number, call: <T>(method: "GET", path: string) => Promise<T>): Promise<Record<string, unknown>> {
-  const found = asRecords(await call("GET", "/api/v1/ai/snippets")).find((s) => s.id === id);
+  const found = requireList(await call("GET", "/api/v1/ai/snippets"), "the snippet list").filter(isRecord).find((s) => s.id === id);
   if (found === undefined) {
     throw new NotFoundError(`Snippet ${id} not found`, { status: 404, hint: "List the snippets with snippet_list." });
   }

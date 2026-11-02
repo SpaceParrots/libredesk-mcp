@@ -21,4 +21,18 @@ describe("verifyCredentials", () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(json({ message: "bad" }, 401));
     await expect(verifyCredentials({ url: "https://x.example", apiKey: "k", apiSecret: "s" }, fetchImpl)).rejects.toThrow(AuthError);
   });
+
+  it("rejects a 2xx answer that is not an agent record, with the base URL hint", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(json({ status: "success", data: { id: 1 } }));
+    await expect(verifyCredentials({ url: "https://x.example", apiKey: "k", apiSecret: "s" }, fetchImpl)).rejects.toMatchObject({
+      hint: expect.stringContaining("base URL"),
+    });
+  });
+
+  it("rejects an HTML page", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response("<html></html>", { status: 200, headers: { "content-type": "text/html" } }));
+    await expect(verifyCredentials({ url: "https://x.example", apiKey: "k", apiSecret: "s" }, fetchImpl)).rejects.toMatchObject({
+      hint: expect.stringContaining("/helpdesk"),
+    });
+  });
 });

@@ -6,14 +6,16 @@
  */
 
 import { z } from "zod";
+import { isRecord } from "../guards.js";
 import { defineDomain, defineOperation } from "../ops/define.js";
+import { requireList, requireRecord } from "../ops/merge.js";
 
 function pick(source: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
   return Object.fromEntries(keys.filter((key) => key in source).map((key) => [key, source[key]]));
 }
 
 function asRecords(data: unknown): Record<string, unknown>[] {
-  return Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
+  return requireList(data, "the response").filter(isRecord);
 }
 
 function listOf(keys: readonly string[]): (data: unknown) => Record<string, unknown>[] {
@@ -28,10 +30,10 @@ const me = defineOperation({
   input: {},
   impact: "read",
   present: (data) => {
-    const agent = (data ?? {}) as Record<string, unknown>;
+    const agent = requireRecord(data, "the agent");
     return {
       ...pick(agent, ["id", "first_name", "last_name", "email", "type", "enabled", "availability_status", "roles", "permissions"]),
-      teams: asRecords(agent.teams).map((team) => pick(team, ["id", "name"])),
+      teams: (Array.isArray(agent.teams) ? agent.teams : []).filter(isRecord).map((team) => pick(team, ["id", "name"])),
     };
   },
 });

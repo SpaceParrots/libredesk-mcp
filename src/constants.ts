@@ -30,3 +30,6 @@ export const PACKAGE_NAME = "@spaceparrots/libredesk-mcp";
 
 /** Name of the installed binary. */
 export const BIN_NAME = "ldesk";
+
+/** Hint shown when a server answers 2xx with something that is not the LibreDesk API (usually a wrong base URL). */
+export const BASE_URL_HINT = "Check the LibreDesk base URL, including any path prefix such as /helpdesk.";
