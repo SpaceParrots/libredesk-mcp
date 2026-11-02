@@ -20,6 +20,9 @@ describe("rawRequest", () => {
       "/admin",
       "/api/v2/x",
       "/api/v1/../admin",
+      // Allowed after normalising, but would leave a path prefix such as https://host/helpdesk.
+      "/../api/v1/agents/me",
+      "/api/v1/./agents/me",
       "/api/v1/%2e%2e/admin",
       "/api/v1/%2E%2E/admin",
       "/api/v1/..%2fadmin",

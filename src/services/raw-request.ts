@@ -40,7 +40,8 @@ function checkedPath(path: string, caller: "cli" | "mcp"): string {
     throw new InputError(`Path "${path}" is not allowed.`, { hint });
   };
   if (/[?#]/.test(withSlash)) return reject(QUERY_HINTS[caller]);
-  if (withSlash.includes("\\") || /%(2e|2f|5c)/i.test(withSlash)) return reject();
+  // A dot segment would be resolved against the profile URL and could leave its path prefix.
+  if (withSlash.includes("\\") || /%(2e|2f|5c)/i.test(withSlash) || withSlash.split("/").some((s) => s === "." || s === "..")) return reject();
   const { pathname } = new URL(withSlash, "http://placeholder.invalid");
   const allowed = pathname === "/health" || (pathname.startsWith("/api/v1/") && pathname.length > "/api/v1/".length);
   return allowed ? withSlash : reject();
