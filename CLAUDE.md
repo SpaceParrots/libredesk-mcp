@@ -50,7 +50,7 @@ A new domain is a file in `src/domains/` exporting a `Domain` (`name` kebab-case
 
 ## Rules learned in this phase
 
-- LibreDesk PUT endpoints replace the whole record: a field missing from the body is reset (a missing `ai_enabled` becomes `false`). Updates read the current record, then send the exact key set the server handler writes, with the caller's changes applied (`mergeForUpdate`). A test named `update keeps fields the caller did not pass` pins this for each updatable record.
+- LibreDesk PUT endpoints replace the whole record: a field missing from the body is reset (a missing `ai_enabled` becomes `false`). Updates read the current record, then send the exact key set the server handler writes, with the caller's changes applied (`mergeForUpdate`). A test whose name ends with `keeps fields the caller did not pass` pins this for each updatable record.
 - `defineOperation` enforces that every field of a GET or DELETE is a path parameter or a query field, because those requests have no body. A field that would be dropped silently fails at load. Operations with a custom `run` are exempt.
 - Do not annotate the parameters of a `run` or `present` callback. They are typed from `input`, and an annotation breaks the inference or makes the operation unassignable to `Operation`.
 - Validation is strict: unknown keys are rejected in `run.ts` and in the MCP action tool, with an error naming them. Do not loosen it to be forgiving.
@@ -59,7 +59,7 @@ A new domain is a file in `src/domains/` exporting a `Domain` (`name` kebab-case
 - Non-interactive runs never wait: with no TTY, missing required fields and unconfirmed `caution` or `destructive` operations fail with a message naming the fields or `--yes`.
 - Never put the API secret into an error message, `status` output, `--json` output or a log. `mcp install --scope print` shows a placeholder unless `--show-secret` is given.
 - Every operation built from the LibreDesk source rather than the documented OpenAPI spec has `undocumented: true`. The README lists them; regenerate with `npm run docs:undocumented` after a build and update the README.
-- Shapes of undocumented endpoints come from the LibreDesk v2.9.2 source: `D:\SpaceParrots\_ref\libredesk` or a fresh clone of tag `v2.9.2`. Read the handler and request struct (`cmd/*.go`, `internal/*/models`), do not guess field names or required fields.
+- Shapes of undocumented endpoints come from the LibreDesk v2.9.2 source: a fresh clone of tag `v2.9.2` (`git clone --depth 1 --branch v2.9.2 https://github.com/abhinavxd/libredesk.git`). Read the handler and request struct (`cmd/*.go`, `internal/*/models`), do not guess field names or required fields.
 - Article content is markdown by default; stored HTML that markdown would lose comes back as HTML with `content_format: "html"`.
 - New articles default to `draft` with `ai_enabled` true. Publishing goes through `set_status`.
 - Files open with a JSDoc `@module` block and every export has a JSDoc comment. File names are kebab-case. Service inputs and config objects are `readonly`, and config changes return new objects.
