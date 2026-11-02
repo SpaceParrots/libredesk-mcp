@@ -353,7 +353,16 @@ describe("serve and interactive", () => {
 
   it("i calls runInteractive", async () => {
     const runInteractive = vi.fn().mockResolvedValue(undefined);
-    await run(["i"], deps(), { runInteractive });
+    await run(["i"], deps({ isTTY: true }), { runInteractive });
     expect(runInteractive).toHaveBeenCalledTimes(1);
+  });
+
+  it("i without a terminal fails with an input error and never starts the menu", async () => {
+    const runInteractive = vi.fn().mockResolvedValue(undefined);
+    await run(["i"], deps({ isTTY: false }), { runInteractive });
+    expect(runInteractive).not.toHaveBeenCalled();
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toBeInstanceOf(InputError);
+    expect((errors[0] as InputError).message).toContain("terminal");
   });
 });

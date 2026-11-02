@@ -15,6 +15,20 @@ describe("normalizeUrl", () => {
     expect(normalizeUrl(" https://example.com/helpdesk/ ")).toBe("https://example.com/helpdesk");
     expect(normalizeUrl("https://example.com///")).toBe("https://example.com");
   });
+  it("rejects urls with userinfo", () => {
+    expect(() => normalizeUrl("https://user:pass@example.com")).toThrow(ConfigError);
+    expect(() => normalizeUrl("https://user@example.com/helpdesk")).toThrow(ConfigError);
+  });
+  it("does not echo the password of a rejected url", () => {
+    let message = "";
+    try {
+      normalizeUrl("https://user:hunter2@example.com");
+    } catch (error) {
+      message = error instanceof Error ? error.message : "";
+    }
+    expect(message).not.toBe("");
+    expect(message).not.toContain("hunter2");
+  });
   it("rejects non-http urls", () => {
     expect(() => normalizeUrl("ftp://x")).toThrow(ConfigError);
     expect(() => normalizeUrl("not a url")).toThrow(ConfigError);
