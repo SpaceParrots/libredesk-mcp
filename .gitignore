@@ -38,3 +38,6 @@ Thumbs.db
 # libredesk-mcp runtime config and local data
 .libredesk-mcp/
 dev/data/
+
+# Local planning docs (specs, plans, follow-ups); kept out of the repo
+/docs/superpowers/
