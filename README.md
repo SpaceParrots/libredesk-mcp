@@ -21,8 +21,8 @@ This puts the `ldesk` command on your PATH. To try it without installing, use `n
 ## Quick start
 
 ```bash
-# Verify the credentials and save them as a profile
-ldesk login --url https://helpdesk.example.com --api-key <key> --api-secret <secret>
+# Verify the credentials and save them as a profile; the secret is asked for and not echoed
+ldesk login --url https://helpdesk.example.com --api-key <key>
 
 # Check the profile in effect and whether the server answers
 ldesk status
@@ -32,7 +32,7 @@ ldesk help-center list
 ldesk articles list 1
 ```
 
-`ldesk login` without flags asks for the missing values in a terminal, and fails naming them without one. The profile name defaults to the host name with dots replaced by dashes (`helpdesk-example-com`); `--name` overrides it. The config lives in `~/.libredesk-mcp/config.json` with mode 0600. Output masks the API secret everywhere.
+`ldesk login` asks for any missing value in a terminal, and fails naming them without one. For CI or other non-interactive runs pass `--api-secret <secret>` too, but know that it lands in your shell history and in the process list; prefer the `LIBREDESK_URL`, `LIBREDESK_API_KEY` and `LIBREDESK_API_SECRET` environment variables there. The profile name defaults to the host name with dots replaced by dashes (`helpdesk-example-com`); `--name` overrides it. The config lives in `~/.libredesk-mcp/config.json` with mode 0600. Output masks the API secret everywhere.
 
 Running `ldesk` with no arguments in a terminal starts interactive mode (also `ldesk i`): pick a domain, an operation, fill the fields, confirm. Without a terminal it starts the MCP server, the same as `ldesk serve`.
 
