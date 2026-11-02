@@ -5,7 +5,7 @@
  */
 
 import type { Profile } from "./config.js";
-import { BASE_URL_HINT, HTTP_TIMEOUT_MS } from "./constants.js";
+import { HTTP_TIMEOUT_MS } from "./constants.js";
 import { ApiError, AuthError, NetworkError, NotFoundError, PermissionError } from "./errors.js";
 import { isRecord } from "./guards.js";
 import { redactText } from "./mask.js";
@@ -126,15 +126,9 @@ export async function request<T = unknown>(
 
   const parsed = isJsonContent(response) || text.trimStart().startsWith("{") ? parseJson(text) : undefined;
   if (!response.ok) throw toApiError(response, parsed, text, redact);
-  if (parsed === undefined) {
-    // An empty 2xx body is allowed and comes back as "". Anything else that is not JSON is not the LibreDesk API.
-    if (text.trim() === "") return text as T;
-    const type = response.headers.get("content-type") ?? "unknown content type";
-    throw new ApiError(`HTTP ${response.status} from ${url} was not JSON (${type}).`, {
-      status: response.status,
-      hint: BASE_URL_HINT,
-    });
-  }
+  // Not every endpoint answers JSON (a transcript is text/plain, a preview is HTML), so the body comes back as text.
+  // Callers that expect JSON check the shape and add BASE_URL_HINT (see requireRecord, requireList, verifyCredentials).
+  if (parsed === undefined) return text as T;
   if (isRecord(parsed) && parsed.status === "success" && "data" in parsed) return parsed.data as T;
   return parsed as T;
 }

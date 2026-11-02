@@ -160,21 +160,17 @@ describe("request", () => {
     expect((err as Error).message).toContain("fetch failed");
   });
 
-  it("throws a base URL hint for a non-empty 2xx body that is not JSON", async () => {
-    const { fetchImpl } = fakeFetch(200, "<html><body>Welcome</body></html>", "text/html");
-    const err = await caught(request(profile, "GET", "/x", { fetchImpl }));
-    expect(err).toBeInstanceOf(ApiError);
-    expect((err as ApiError).status).toBe(200);
-    expect((err as Error).message).toContain("text/html");
-    expect((err as ApiError).hint).toContain("/helpdesk");
+  it("returns the text of a non-JSON 200 response (transcript)", async () => {
+    const { fetchImpl } = fakeFetch(200, "hello transcript", "text/plain");
+    await expect(request(profile, "GET", "/x", { fetchImpl })).resolves.toBe("hello transcript");
   });
 
-  it("throws for a JSON content type with an unparseable 2xx body", async () => {
-    const { fetchImpl } = fakeFetch(200, "not json at all", "application/json");
-    await expect(request(profile, "GET", "/x", { fetchImpl })).rejects.toBeInstanceOf(ApiError);
+  it("returns the text of an HTML 200 response (preview)", async () => {
+    const { fetchImpl } = fakeFetch(200, "<html><body>Preview</body></html>", "text/html");
+    await expect(request(profile, "GET", "/x", { fetchImpl })).resolves.toBe("<html><body>Preview</body></html>");
   });
 
-  it("still accepts an empty 2xx body and returns an empty string", async () => {
+  it("returns an empty string for an empty 2xx body", async () => {
     const { fetchImpl } = fakeFetch(200, "", "text/plain");
     await expect(request(profile, "GET", "/x", { fetchImpl })).resolves.toBe("");
   });

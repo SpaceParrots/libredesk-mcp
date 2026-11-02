@@ -35,6 +35,9 @@ function fakeFetch(respond: (call: Call) => unknown = () => true) {
   return { fetchImpl, calls };
 }
 
+const htmlFetch: typeof fetch = () =>
+  Promise.resolve(new Response("<html>Welcome</html>", { status: 200, headers: { "content-type": "text/html" } }));
+
 function op(name: string) {
   const found = articlesDomain.operations.find((o) => o.name === name);
   if (!found) throw new Error(`no operation ${name}`);
@@ -237,6 +240,12 @@ describe("articles domain", () => {
     expect(calls[0]?.path).toBe("/api/v1/collections/2/article-sort-order");
     expect(calls[0]?.body).toEqual({ "11": 0, "12": 1 });
   });
+  it("update with an HTML page as the current record fails with the base URL hint and sends no PUT", async () => {
+    await expect(runOperation(op("update"), { id: 4, title: "New" }, { profile, fetchImpl: htmlFetch })).rejects.toMatchObject({
+      hint: expect.stringContaining("base URL"),
+    });
+  });
+
   it("update refuses to merge into a response that is not a record", async () => {
     const { fetchImpl, calls } = fakeFetch(() => "<html>Welcome</html>");
     await expect(runOperation(op("update"), { id: 4, title: "New" }, { profile, fetchImpl })).rejects.toMatchObject({ hint: expect.stringContaining("base URL") });

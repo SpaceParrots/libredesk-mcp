@@ -50,7 +50,7 @@ A new domain is a file in `src/domains/` exporting a `Domain` (`name` kebab-case
 
 ## Rules learned in this phase
 
-- LibreDesk PUT endpoints replace the whole record: a field missing from the body is reset (a missing `ai_enabled` becomes `false`). Updates read the current record, then send the exact key set the server handler writes, with the caller's changes applied (`mergeForUpdate`). A test whose name ends with `keeps fields the caller did not pass` pins this for each updatable record.
+- LibreDesk PUT endpoints replace the whole record: a field missing from the body is reset (a missing `ai_enabled` becomes `false`). Updates read the current record, then send the exact key set the server handler writes, with the caller's changes applied (`mergeForUpdate`). A test whose name ends with `keeps fields the caller did not pass` pins this for each updatable record (collections are pinned by `collection_update merges from the collection list`).
 - `defineOperation` enforces that every field of a GET or DELETE is a path parameter or a query field, because those requests have no body. A field that would be dropped silently fails at load. Operations with a custom `run` are exempt.
 - Do not annotate the parameters of a `run` or `present` callback. They are typed from `input`, and an annotation breaks the inference or makes the operation unassignable to `Operation`.
 - Validation is strict: unknown keys are rejected in `run.ts` and in the MCP action tool, with an error naming them. Do not loosen it to be forgiving.

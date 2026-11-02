@@ -20,6 +20,8 @@ export interface StatusReport {
   readonly reachable: boolean;
   readonly agent?: string;
   readonly error?: string;
+  /** What to do about `error`, when the error carries advice (for example a wrong base URL). */
+  readonly hint?: string;
   readonly targetVersion: string;
   readonly configPath: string;
 }
@@ -48,7 +50,9 @@ export async function getStatus(deps: StatusDeps = {}): Promise<StatusReport> {
     const agent = await verifyCredentials(profile, deps.fetchImpl);
     return { ...base, reachable: true, agent: agent.email };
   } catch (error) {
-    const message = redactText(toLibreDeskError(error).message, [profile.apiKey, profile.apiSecret]);
-    return { ...base, reachable: false, error: message };
+    const failure = toLibreDeskError(error);
+    const secrets = [profile.apiKey, profile.apiSecret];
+    const hint = failure.hint === undefined ? {} : { hint: redactText(failure.hint, secrets) };
+    return { ...base, reachable: false, error: redactText(failure.message, secrets), ...hint };
   }
 }
