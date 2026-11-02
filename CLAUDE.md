@@ -58,7 +58,7 @@ A new domain is a file in `src/domains/` exporting a `Domain` (`name` kebab-case
 - In the MCP path, never write to stdout. Stdout carries the protocol, so a stray `console.log` or a prompt corrupts it. Diagnostics go to stderr. The CLI prints only through `src/cli/output.ts`.
 - Non-interactive runs never wait: with no TTY, missing required fields and unconfirmed `caution` or `destructive` operations fail with a message naming the fields or `--yes`.
 - Never put the API secret into an error message, `status` output, `--json` output or a log. `mcp install --scope print` shows a placeholder unless `--show-secret` is given.
-- Every operation built from the LibreDesk source rather than the documented OpenAPI spec has `undocumented: true`. The README lists them; regenerate with `npm run docs:undocumented` after a build and update the README.
+- Every operation built from the LibreDesk source rather than the documented OpenAPI spec has `undocumented: true`. `docs/api-coverage.md` lists them; regenerate with `npm run docs:undocumented` after a build and update that file.
 - Shapes of undocumented endpoints come from the LibreDesk v2.9.2 source: a fresh clone of tag `v2.9.2` (`git clone --depth 1 --branch v2.9.2 https://github.com/abhinavxd/libredesk.git`). Read the handler and request struct (`cmd/*.go`, `internal/*/models`), do not guess field names or required fields.
 - Article content is markdown by default; stored HTML that markdown would lose comes back as HTML with `content_format: "html"`.
 - New articles default to `draft` with `ai_enabled` true. Publishing goes through `set_status`.
