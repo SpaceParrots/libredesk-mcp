@@ -216,7 +216,7 @@ describe("addDomainCommands", () => {
     expect(update).toContain("help-center collection update [options] <help-center-id> <id>\n");
     expect(flat(update)).toContain("<help-center-id> Help center id. (required; also --help-center-id <value>)");
     expect(flat(update)).toContain("<id> Collection id. (required; also --id <value>)");
-    expect(update.match(/\(required/g)).toHaveLength(2);
+    expect(update.match(/\(required;/g)).toHaveLength(2);
     expect(helpOf(h, "help-center", "collection")).toMatch(/\n {2}update \[options\] <help-center-id> <id> +/);
   });
 

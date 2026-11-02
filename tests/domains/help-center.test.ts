@@ -204,7 +204,10 @@ describe("help center domain", () => {
     const { fetchImpl, calls } = fakeFetch(() => [collection]);
     await expect(
       runOperation(op("collection_update"), { help_center_id: 1, id: 77, name: "x" }, { profile, fetchImpl }),
-    ).rejects.toBeInstanceOf(NotFoundError);
+    ).rejects.toMatchObject({
+      constructor: NotFoundError,
+      hint: "List the collections with `ldesk help-center collection list <help-center-id>` (MCP action collection_list).",
+    });
     expect(calls).toHaveLength(1);
   });
 
