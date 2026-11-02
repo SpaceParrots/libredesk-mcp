@@ -82,7 +82,7 @@ ldesk mcp install --scope print         # only print the entry, for another clie
 
 ### When it does not connect
 
-Run `ldesk doctor` in the folder where the client runs. It starts each LibreDesk entry of `~/.claude.json` and `./.mcp.json` exactly as configured and shows the answer or the error. When an entry fails but a direct `node` launch works, it prints a `claude mcp add` line you can use instead. See [Checking the setup](cli.md#checking-the-setup).
+Run `ldesk doctor` in the folder where the client runs. It starts each LibreDesk entry of `~/.claude.json` and `./.mcp.json` exactly as configured and shows the answer or the error. It asks first when the folder decides what would run: an entry from `./.mcp.json`, a command path inside the folder, or `npx` next to a `package.json` or `node_modules`. When an entry fails but a direct `node` launch works, it prints a `claude mcp add` line you can use instead. See [Checking the setup](cli.md#checking-the-setup).
 
 ## Tools
 
@@ -91,20 +91,21 @@ Each tool takes an `action` and that action's fields, plus an optional `profile`
 | Tool | What it does |
 | --- | --- |
 | `libredesk_help_center` | Help centers and collections: list, create, edit, reorder. |
-| `libredesk_articles` | Articles: list, read, create drafts, edit, move, translate, sync from files, check visibility. |
+| `libredesk_articles` | Articles: list, read, create drafts, edit, translate, sync from files, check visibility. |
 | `libredesk_ai_knowledge` | AI snippets and FAQ suggestions. |
 | `libredesk_lookup` | Read-only lookups of ids: agents, teams, inboxes, tags, statuses and more. |
-| `libredesk_publish` | Changes what customers and AI assistants see, or what costs money: publish articles and collections, put a help center online or offline, switch FAQ learning on or off. |
+| `libredesk_publish` | Changes what customers and AI assistants see, or what costs money: publish articles and collections, move them into another collection, put a help center online or offline, switch FAQ learning on or off. |
 | `libredesk_delete` | Deletes help centers, collections, articles and snippets. |
 | `libredesk_request` | Finds any other endpoint (`catalog`) and calls it (`call`). |
 | `libredesk_status` | Shows the profile in use and whether the server answers. |
 
 A few things worth knowing:
 
-- The first four tools cannot publish. `create` always makes a draft, and publishing goes through `libredesk_publish`. Their edits still take effect at once, also on an article that is already published.
+- The first four tools cannot publish. `create` always makes a draft, and publishing goes through `libredesk_publish`, and so does moving an article or collection (`article_move`, `collection_move`), because a move under a published collection can make it public. Their edits still take effect at once, also on an article that is already published.
+- Custom CSS, custom JavaScript and the custom domain of a help center are not fields of `libredesk_help_center`. Set them in the CLI, which asks first, or with `libredesk_request`.
 - `article_set_status` and `collection_publish` take one id or a list of up to 100, and report success or the error for each id.
 - Writes return a short record (id, title, slug, status, `ai_enabled`, `updated_at`) instead of repeating the content the model just sent. `get` returns the full record.
-- The `sync` action of `libredesk_articles` reads markdown files from the machine the server runs on and creates or updates articles from them, so long texts never pass through the model. The file format is described in [Syncing a folder of articles](cli.md#syncing-a-folder-of-articles).
+- The `sync` action of `libredesk_articles` reads markdown files from the machine the server runs on and creates or updates articles from them, so long texts never pass through the model. It reads only below the folder the server runs in, or below `LIBREDESK_SYNC_ROOT` when that is set, and skips symbolic links. The file format is described in [Syncing a folder of articles](cli.md#syncing-a-folder-of-articles).
 - The `visibility` action lists which articles the AI assistants can use and why the others are hidden.
 
 ## Permissions
@@ -120,9 +121,11 @@ MCP clients decide per tool whether to ask you before a call. Because publishing
 }
 ```
 
-Allowing the everyday tools still lets the model change live content without asking: edits to an article that is already published, help center settings such as custom CSS and JavaScript, and snippets, which assistants use as soon as they are enabled. Allow them only where you are fine with that, or keep `libredesk_help_center` and `libredesk_ai_knowledge` on ask.
+Allowing the everyday tools still lets the model change live content without asking: edits to an article that is already published, help center names and settings, and snippets, which assistants use as soon as they are enabled. Allow them only where you are fine with that, or keep `libredesk_help_center` and `libredesk_ai_knowledge` on ask.
 
-The tools also carry the MCP hints `readOnlyHint`, `destructiveHint` and `idempotentHint`, and the server tells the model to confirm publishing and deleting with you first.
+The tools also carry the MCP hints `readOnlyHint`, `destructiveHint` and `idempotentHint`, and the server tells the model to confirm publishing and deleting with you first. `libredesk_publish` is marked destructive too, because it can take a help center offline, so clients that ask before destructive tools ask there as well.
+
+Every tool takes a `profile` argument. If one server should only reach some of your stored profiles, list them in `LIBREDESK_MCP_PROFILES` (comma-separated); a call naming any other profile fails. The profile the server starts with is always allowed.
 
 ## What AI assistants can see
 

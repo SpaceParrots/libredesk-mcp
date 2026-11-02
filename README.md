@@ -83,10 +83,11 @@ If the client can't connect, run `ldesk doctor` in the folder where the client r
 
 ## Safe by default
 
-- **Drafts first.** New articles are drafts. Publishing, taking a help center offline, enabling FAQ learning and deleting are separate steps that ask for confirmation.
+- **Drafts first.** New articles are drafts. Publishing, moving articles and collections, taking a help center offline, enabling FAQ learning, changing a help center's custom code and deleting are separate steps that ask for confirmation.
 - **Separate tools for risky actions.** Over MCP, publishing and deleting live in their own tools, `libredesk_publish` and `libredesk_delete`, so your client can ask you before each one. Edits made with the other tools take effect at once, so editing an already published article changes the live page. See [Permissions](docs/mcp.md#permissions).
 - **Updates keep your data.** LibreDesk replaces a whole record on every update. `ldesk` reads the current record first, so changing a title never resets the content or the AI setting.
-- **Secrets stay hidden.** The API secret is stored in `~/.libredesk-mcp/config.json` (file mode 0600 on macOS and Linux) and is masked in all output.
+- **Secrets stay hidden.** The API secret is stored in `~/.libredesk-mcp/config.json` (file mode 0600 on macOS and Linux) and is masked in all output, also when a server echoes it back.
+- **Local files stay local.** Over MCP, `sync` reads only below the server's folder (or `LIBREDESK_SYNC_ROOT`) and skips symbolic links, and `LIBREDESK_MCP_PROFILES` limits which stored profiles a server may use. `ldesk doctor` asks before starting a server command that the current folder can change.
 
 ## Documentation
 
