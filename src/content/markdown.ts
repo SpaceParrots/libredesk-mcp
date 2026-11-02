@@ -3,8 +3,8 @@
  * Conversion between markdown and the HTML LibreDesk stores for knowledge base articles.
  */
 
-import { marked } from "marked";
-import { parse } from "node-html-parser";
+import { Marked, Renderer, type Tokens } from "marked";
+import { type HTMLElement, NodeType, parse } from "node-html-parser";
 import TurndownService from "turndown";
 
 /** How article content is written or read by callers. */
@@ -23,15 +23,45 @@ const ALLOWED_TAGS: ReadonlySet<string> = new Set([
 ]);
 
 const ALLOWED_ATTRIBUTES: Readonly<Record<string, readonly string[]>> = {
-  a: ["href", "title", "target", "rel"],
+  a: ["href", "title"],
   img: ["src", "alt", "title"],
   ol: ["start"],
 };
+
+/** Attributes the LibreDesk editor (tiptap Link defaults) puts on every link. */
+const LINK_DEFAULTS: Readonly<Record<string, string>> = {
+  target: "_blank",
+  rel: "noopener noreferrer nofollow",
+};
+
+const LINK_ATTRIBUTES = Object.entries(LINK_DEFAULTS)
+  .map(([name, value]) => `${name}="${value}"`)
+  .join(" ");
+
+const converter = new Marked({
+  gfm: true,
+  async: false,
+  renderer: {
+    link(this: Renderer, token: Tokens.Link): string {
+      return Renderer.prototype.link.call(this, token).replace(/^<a /, `<a ${LINK_ATTRIBUTES} `);
+    },
+  },
+});
 
 const turndown = new TurndownService({
   headingStyle: "atx",
   codeBlockStyle: "fenced",
   bulletListMarker: "-",
+});
+
+// Plain text must not turn into tags or entities when marked reads it back.
+const defaultEscape = turndown.escape.bind(turndown);
+turndown.escape = (text: string): string =>
+  defaultEscape(text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"));
+
+turndown.addRule("strikethrough", {
+  filter: ["s", "del"],
+  replacement: (content) => `~~${content}~~`,
 });
 
 interface ListParent {
@@ -40,14 +70,10 @@ interface ListParent {
   getAttribute(name: string): string | null;
 }
 
-// Turndown pads list markers to "-   item"; use a single space like hand-written markdown.
+// Turndown pads list markers to "-   item"; use one space and indent continuation lines by the marker width.
 turndown.addRule("compactListItem", {
   filter: "li",
   replacement(content, node, options) {
-    const body = content
-      .replace(/^\n+/, "")
-      .replace(/\n+$/, "\n")
-      .replace(/\n/g, "\n  ");
     const parent = node.parentNode as ListParent | null;
     let prefix = `${options.bulletListMarker} `;
     if (parent?.nodeName === "OL") {
@@ -55,13 +81,20 @@ turndown.addRule("compactListItem", {
       const index = Array.prototype.indexOf.call(parent.children, node) as number;
       prefix = `${(start ? Number(start) : 1) + index}. `;
     }
-    return prefix + body + (node.nextSibling && !body.endsWith("\n") ? "\n" : "");
+    const indent = " ".repeat(prefix.length);
+    const body = content
+      .replace(/^\n+/, "")
+      .replace(/\n+$/, "")
+      .split("\n")
+      .map((line, index) => (index === 0 || line.trim() === "" ? line.trimEnd() : indent + line))
+      .join("\n");
+    return prefix + body + (node.nextSibling ? "\n" : "");
   },
 });
 
 /** Converts GitHub-flavoured markdown to HTML synchronously. */
 export function markdownToHtml(markdown: string): string {
-  return marked.parse(markdown, { async: false, gfm: true });
+  return converter.parse(markdown, { async: false });
 }
 
 /** Converts HTML to markdown, trimming surrounding whitespace. */
@@ -74,17 +107,40 @@ function isLanguageClass(value: string): boolean {
   return classes.length > 0 && classes.every((cls) => cls.startsWith("language-"));
 }
 
+function hasOnlyText(element: HTMLElement): boolean {
+  return element.childNodes.every((child) => child.nodeType === NodeType.TEXT_NODE);
+}
+
+/** A pre block is representable only as a single code element holding plain text. */
+function isPlainCodeBlock(pre: HTMLElement): boolean {
+  const [child] = pre.childNodes;
+  return (
+    pre.childNodes.length === 1 &&
+    child?.nodeType === NodeType.ELEMENT_NODE &&
+    (child as HTMLElement).rawTagName.toLowerCase() === "code" &&
+    hasOnlyText(child as HTMLElement)
+  );
+}
+
 /** Returns the first element or attribute markdown cannot represent, or undefined when none. */
 function findUnsupported(html: string): string | undefined {
-  const root = parse(html, { comment: false });
+  // Without pre in the list, node-html-parser parses pre contents as real nodes instead of raw text.
+  const root = parse(html, { comment: false, blockTextElements: { script: true, noscript: true, style: true } });
   for (const element of root.querySelectorAll("*")) {
     const tag = element.rawTagName.toLowerCase();
     if (!ALLOWED_TAGS.has(tag)) return `<${tag}>`;
+    if (tag === "pre" && !isPlainCodeBlock(element)) return "<pre>";
+    if (tag === "code" && !hasOnlyText(element)) return "<code>";
     const allowed = ALLOWED_ATTRIBUTES[tag] ?? [];
     for (const [rawName, value] of Object.entries(element.attributes)) {
       const name = rawName.toLowerCase();
-      if (allowed.includes(name)) continue;
-      if (tag === "code" && name === "class" && isLanguageClass(value)) continue;
+      if (tag === "a" && name in LINK_DEFAULTS) {
+        if (value === LINK_DEFAULTS[name]) continue;
+      } else if (allowed.includes(name)) {
+        continue;
+      } else if (tag === "code" && name === "class" && isLanguageClass(value)) {
+        continue;
+      }
       return `<${tag} ${name}>`;
     }
   }
