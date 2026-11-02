@@ -30,13 +30,25 @@ Run `ldesk` without arguments for an interactive menu, or `ldesk <command> --hel
 
 ## Use it from Claude
 
-After `ldesk login`, add the MCP server to Claude Code:
+Add the server to your MCP client config, for example `.mcp.json` in your project for Claude Code or `claude_desktop_config.json` for Claude Desktop:
 
-```bash
-claude mcp add libredesk -- ldesk serve
+```json
+{
+  "mcpServers": {
+    "libredesk": {
+      "command": "npx",
+      "args": ["-y", "@spaceparrots/libredesk-mcp", "serve"],
+      "env": {
+        "LIBREDESK_URL": "https://helpdesk.example.com",
+        "LIBREDESK_API_KEY": "<your-api-key>",
+        "LIBREDESK_API_SECRET": "<your-api-secret>"
+      }
+    }
+  }
+}
 ```
 
-The server reuses your stored login. To configure it with environment variables instead, for Claude Desktop, or to limit the tools, see [MCP server](docs/mcp.md).
+The `env` block is optional. Leave it out and the server uses the login stored by `ldesk login`, which keeps the secret out of the config file. For more setup variants and to limit the tools, see [MCP server](docs/mcp.md).
 
 ## Documentation
 
