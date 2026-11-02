@@ -242,6 +242,21 @@ describe("links", () => {
     expect(readArticleContent(html, "markdown").content).toBe("[x](https://e.com)");
   });
 
+  it("reads a sanitizer-stored mailto or relative link with only rel nofollow as markdown", () => {
+    const html =
+      '<p>Mail <a href="mailto:support@example.com" rel="nofollow">support@example.com</a> or see <a href="/a" rel="nofollow">here</a>.</p>';
+    const read = readArticleContent(html, "markdown");
+    expect(read.content_format).toBe("markdown");
+    expect(read.content).toBe(
+      "Mail [support@example.com](mailto:support@example.com) or see [here](/a).",
+    );
+  });
+
+  it("accepts any order of the nofollow, noopener and noreferrer rel tokens", () => {
+    expect(isMarkdownSafe('<p><a href="/a" rel="noreferrer  nofollow">x</a></p>')).toBe(true);
+    expect(isMarkdownSafe('<p><a href="/a" rel="nofollow sponsored">x</a></p>')).toBe(false);
+  });
+
   it("falls back to html for a non-default target or rel", () => {
     expect(
       readArticleContent('<p><a href="/a" target="_self">x</a></p>', "markdown")
