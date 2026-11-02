@@ -272,6 +272,15 @@ describe("addDomainCommands", () => {
   it("create help says when it asks for confirmation", () => {
     expect(flat(helpOf(harness(), "articles", "create"))).toContain("Asks for confirmation when status is published: Publishing makes the article public");
   });
+
+  it("article help hides the ignored slug and says where the locale default applies", () => {
+    const create = flat(helpOf(harness(), "articles", "create"));
+    const update = flat(helpOf(harness(), "articles", "update"));
+    expect(create).not.toContain("--slug");
+    expect(update).not.toContain("--slug");
+    expect(create).toContain('Without --locale the article is "en".');
+    expect(update).not.toContain('"en"');
+  });
 });
 
 function helpOf(h: Harness, ...path: string[]): string {
