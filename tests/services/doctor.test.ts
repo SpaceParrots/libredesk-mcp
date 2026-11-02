@@ -193,7 +193,7 @@ describe("runDoctor", () => {
   it("starts an entry from ./.mcp.json only when the user trusts it", async () => {
     await writeProject({ mcpServers: { libredesk: { command: "sh", args: ["-c", "evil"] } } });
     const asked: string[] = [];
-    const refuse = deps(() => ok, { trustProject: (_name, command) => (asked.push(command), Promise.resolve(false)) });
+    const refuse = deps(() => ok, { confirmLaunch: (request) => (asked.push(request.command), Promise.resolve(false)) });
     const report = await runDoctor(refuse.deps);
     expect(asked).toEqual(["sh -c evil"]);
     expect(refuse.calls.map((c) => c.command)).not.toContain("sh");
@@ -203,13 +203,71 @@ describe("runDoctor", () => {
     await runDoctor(silent.deps);
     expect(silent.calls.map((c) => c.command)).not.toContain("sh");
 
-    const trust = deps(() => ok, { trustProject: () => Promise.resolve(true) });
+    const trust = deps(() => ok, { confirmLaunch: () => Promise.resolve(true) });
     expect(check((await runDoctor(trust.deps)).checks, "launch libredesk").state).toBe("ok");
+  });
+
+  it("asks before an npx entry from ~/.claude.json runs in a folder with package.json or node_modules", async () => {
+    await writeClaude({ mcpServers: { libredesk: { command: "npx", args: ["-y", PACKAGE_NAME, "serve"] } } });
+    const planted = (p: string) => p.endsWith("package.json") || p.endsWith("node_modules");
+    const asked: string[][] = [];
+    const refuse = deps(() => ok, { exists: planted, confirmLaunch: (request) => (asked.push([...request.reasons]), Promise.resolve(false)) });
+    const report = await runDoctor(refuse.deps);
+    expect(asked).toEqual([["this folder has package.json, node_modules, which can change the package npx runs"]]);
+    expect(refuse.calls.map((c) => c.command)).not.toContain("npx");
+    expect(check(report.checks, "launch libredesk")).toMatchObject({ state: "warn", detail: expect.stringContaining("not started: this folder has package.json") as unknown });
+
+    // The same entry in a folder without those files starts without a question.
+    const clean = deps(() => ok, { confirmLaunch: () => Promise.reject(new Error("must not ask")) });
+    expect(check((await runDoctor(clean.deps)).checks, "launch libredesk").state).toBe("ok");
+    expect(clean.calls.map((c) => c.command)).toContain("npx");
+  });
+
+  it("asks before a user entry whose command is a path inside the folder, or a same-named file on Windows", async () => {
+    await writeClaude({ mcpServers: { libredesk: { command: "./bin/ldesk", args: ["serve"] } } });
+    const relative = deps(() => ok);
+    expect(check((await runDoctor(relative.deps)).checks, "launch libredesk").detail).toBe("not started: the command ./bin/ldesk is a path inside this folder");
+    expect(relative.calls).toHaveLength(0);
+
+    await writeClaude({ mcpServers: { libredesk: { command: "ldesk", args: ["serve"] } } });
+    const win = deps(() => ok, { platform: "win32", env: { Path: "C:\\npm", PATHEXT: ".EXE;.CMD" }, exists: (p) => p.toLowerCase().endsWith("ldesk.cmd") });
+    const launch = check((await runDoctor(win.deps)).checks, "launch libredesk");
+    expect(launch.detail).toBe("not started: this folder has a file named ldesk.cmd");
+    expect(win.calls).toHaveLength(0);
+  });
+
+  it("shows ${VAR} references as written and never their values, for started and skipped entries", async () => {
+    const env = { PATH: "/usr/bin", LIBREDESK_API_SECRET: SECRET, GITHUB_TOKEN: "ghp-dummy-token" };
+    await writeClaude({ mcpServers: { libredesk: { command: "ldesk", args: ["serve", "--x=${GITHUB_TOKEN}"] } } });
+    await writeProject({ mcpServers: { "libredesk-p": { command: "ldesk", args: ["serve", "--y=${LIBREDESK_API_SECRET}"] } } });
+    const asked: string[] = [];
+    // The server echoes the value it was given; the report redacts it too.
+    const { deps: d, calls } = deps((command) => (command === EXEC ? ok : { kind: "crash", code: 1, stderr: "bad flag --x=ghp-dummy-token\n" }), {
+      env,
+      confirmLaunch: (request) => (asked.push(request.command), Promise.resolve(false)),
+    });
+    const report = await runDoctor(d);
+    const text = `${JSON.stringify(report)}\n${formatDoctorReport(report)}\n${asked.join("\n")}`;
+    expect(text).not.toContain(SECRET);
+    expect(text).not.toContain("ghp-dummy-token");
+    expect(text).toContain("command: ldesk serve --x=${GITHUB_TOKEN}");
+    expect(asked).toEqual(["ldesk serve --y=${LIBREDESK_API_SECRET}"]);
+    // The started entry still gets the expanded value.
+    expect(calls.find((c) => c.command === "ldesk")?.args).toEqual(["serve", "--x=ghp-dummy-token"]);
+  });
+
+  it("escapes terminal control characters in commands from a config", async () => {
+    await writeProject({ mcpServers: { libredesk: { command: "./x", args: ["\u001b[49G\u001b[Kldesk", "serve\r"] } } });
+    const asked: string[] = [];
+    const { deps: d } = deps(() => ok, { confirmLaunch: (request) => (asked.push(request.command), Promise.resolve(false)) });
+    const report = await runDoctor(d);
+    expect(asked).toEqual(["./x \\x1b[49G\\x1b[Kldesk serve\\x0d"]);
+    expect(JSON.stringify(report)).not.toContain("\\u001b");
   });
 
   it("overrides a failing .mcp.json entry with a local one instead of removing it", async () => {
     await writeProject({ mcpServers: { libredesk: { command: "ldesk", args: ["serve"] } } });
-    const { deps: d } = deps((command) => (command === EXEC ? ok : { kind: "spawn-error", code: "ENOENT" }), { trustProject: () => Promise.resolve(true) });
+    const { deps: d } = deps((command) => (command === EXEC ? ok : { kind: "spawn-error", code: "ENOENT" }), { confirmLaunch: () => Promise.resolve(true) });
     const launch = check((await runDoctor(d)).checks, "launch libredesk");
     expect(launch.detail).toBe("could not be started: ENOENT");
     expect(launch.fix).toEqual(["Override the .mcp.json entry for this folder:", `claude mcp add --scope local libredesk -- "${EXEC}" "${SCRIPT}" serve`]);
@@ -286,13 +344,26 @@ describe("runDoctor", () => {
 
 describe("mcp-probe helpers", () => {
   it("runs an extensionless command through cmd.exe on Windows only, as one quoted command line", () => {
-    expect(planSpawn({ command: "ldesk", args: ["serve"], env: {} }, "win32")).toEqual({ command: "ldesk serve", args: [], shell: true });
+    const noCwd = { NoDefaultCurrentDirectoryInExePath: "1" };
+    expect(planSpawn({ command: "ldesk", args: ["serve"], env: {} }, "win32")).toEqual({ command: "ldesk serve", args: [], shell: true, env: noCwd });
     expect(planSpawn({ command: "npx", args: ["-y", "@spaceparrots/libredesk-mcp", "serve"], env: {} }, "win32").command).toBe("npx -y @spaceparrots/libredesk-mcp serve");
     expect(planSpawn({ command: "C:\\Program Files\\nodejs\\node", args: ["C:\\My Tools\\index.js"], env: {} }, "win32").command).toBe(
       '"C:\\Program Files\\nodejs\\node" "C:\\My Tools\\index.js"',
     );
-    expect(planSpawn({ command: "C:\\nodejs\\node.exe", args: ["x.js"], env: {} }, "win32")).toEqual({ command: "C:\\nodejs\\node.exe", args: ["x.js"], shell: false });
-    expect(planSpawn({ command: "ldesk", args: ["serve"], env: {} }, "linux")).toEqual({ command: "ldesk", args: ["serve"], shell: false });
+    expect(planSpawn({ command: "C:\\nodejs\\node.exe", args: ["x.js"], env: {} }, "win32")).toEqual({ command: "C:\\nodejs\\node.exe", args: ["x.js"], shell: false, env: noCwd });
+  });
+
+  it("starts the resolved path on Windows instead of the bare name, so cmd.exe never picks a file from the current folder", () => {
+    const noCwd = { NoDefaultCurrentDirectoryInExePath: "1" };
+    expect(planSpawn({ command: "npx", args: ["-y", "pkg"], env: {} }, "win32", "C:\\Program Files\\nodejs\\npx.cmd")).toEqual({
+      command: '"C:\\Program Files\\nodejs\\npx.cmd" -y pkg',
+      args: [],
+      shell: true,
+      env: noCwd,
+    });
+    expect(planSpawn({ command: "node", args: ["x.js"], env: {} }, "win32", "C:\\nodejs\\node.exe")).toEqual({ command: "C:\\nodejs\\node.exe", args: ["x.js"], shell: false, env: noCwd });
+    expect(planSpawn({ command: "ldesk", args: [], env: {} }, "linux", "/usr/bin/ldesk")).toEqual({ command: "ldesk", args: [], shell: false, env: {} });
+    expect(planSpawn({ command: "ldesk", args: ["serve"], env: {} }, "linux")).toEqual({ command: "ldesk", args: ["serve"], shell: false, env: {} });
   });
 
   it("resolves a command on PATH with PATHEXT on Windows, first directory first", () => {

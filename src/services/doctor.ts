@@ -2,16 +2,23 @@
  * @module services/doctor
  * The checks behind `ldesk doctor`: Node, the running script, the profile and its server, the
  * MCP client configs, and a launch of every LibreDesk entry the way the client starts it. No
- * printing here. Env values from client configs never reach the report, only their key names.
+ * printing here. Env values from client configs never reach the report, only their key names:
+ * commands are shown as written, and every value `${VAR}` expansion put in is redacted.
+ *
+ * The current folder is untrusted: it may be a cloned repo. Its `./.mcp.json` entries, and any
+ * entry whose command the folder can redirect (a relative path, a package runner such as npx
+ * next to a package.json or node_modules, a same-named file on Windows), start only after a
+ * confirmation.
  */
 
-import { realpathSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { resolve as resolvePath } from "node:path";
+import { posix, resolve as resolvePath, win32 } from "node:path";
 import { PACKAGE_NAME } from "../constants.js";
 import { toLibreDeskError } from "../errors.js";
 import { redactText } from "../mask.js";
+import { printableLine } from "../text.js";
 import { discoverClientConfigs, type ClientEntry, type ConfigFileReport } from "./client-config.js";
 import { expandVars, probeLaunch, resolveCommand, type LaunchSpec, type ProbeResult, type SpawnFn, type StopFn } from "./mcp-probe.js";
 import { getStatus, type StatusReport } from "./status.js";
@@ -61,14 +68,28 @@ export interface DoctorDeps {
   /** How long each launch may take to answer `initialize`. */
   readonly timeoutMs?: number;
   /**
-   * Whether to start an entry of `./.mcp.json`, given its name and command line. That file comes
-   * with the folder, for example a cloned repo, so its command is not run unless this says yes.
-   * Defaults to no.
+   * Whether to start an entry that the current folder supplies or can redirect (see
+   * {@link launchRisks}). Entries without such a risk start without asking. Defaults to no.
    */
-  readonly trustProject?: (name: string, command: string) => Promise<boolean>;
+  readonly confirmLaunch?: (request: LaunchRequest) => Promise<boolean>;
+}
+
+/** What doctor asks before starting an entry the current folder can influence. */
+export interface LaunchRequest {
+  readonly name: string;
+  /** The command line as written in the config, secrets redacted, control characters escaped. */
+  readonly command: string;
+  readonly scope: ClientEntry["scope"];
+  /** Why the folder can change what runs, one reason per item. */
+  readonly reasons: readonly string[];
 }
 
 const NO_TRUST = (): Promise<boolean> => Promise.resolve(false);
+
+/** Commands that run a package, and look for it in the current folder before the registry. */
+const PACKAGE_RUNNERS = new Set(["npx", "npm", "pnpm", "pnpx", "yarn", "bun", "bunx"]);
+/** Files in the current folder that change which package a runner executes. */
+const PACKAGE_FILES = ["package.json", "node_modules", ".npmrc"];
 
 /** Default wait for a launched server's answer. */
 export const DEFAULT_LAUNCH_TIMEOUT_MS = 10_000;
@@ -104,12 +125,46 @@ export function meetsVersion(version: string, minimum: string): boolean {
 }
 
 function quote(arg: string): string {
-  return /[\s"]/.test(arg) || arg === "" ? `"${arg.replaceAll('"', '\\"')}"` : arg;
+  const text = printableLine(arg);
+  return /[\s"]/.test(text) || text === "" ? `"${text.replaceAll('"', '\\"')}"` : text;
 }
 
-/** A command line for display. */
+/** A command line for display, with control characters escaped so it shows what will run. */
 export function commandLine(command: string, args: readonly string[]): string {
   return [command, ...args].map(quote).join(" ");
+}
+
+/**
+ * Why the current folder can change what `entry` runs, or an empty list when it cannot. A
+ * `./.mcp.json` entry comes with the folder. Any other entry runs with the folder as its working
+ * directory, so a relative command path resolves into it, a package runner such as npx prefers
+ * the folder's package.json and node_modules, and on Windows cmd.exe finds a same-named file in
+ * the folder before PATH.
+ */
+export function launchRisks(
+  entry: Pick<ClientEntry, "command" | "scope">,
+  cwd: string,
+  platform: NodeJS.Platform,
+  env: NodeJS.ProcessEnv,
+  exists: (path: string) => boolean = existsSync,
+): string[] {
+  if (entry.scope === "project") return ["the command comes from ./.mcp.json in this folder"];
+  const path = platform === "win32" ? win32 : posix;
+  const command = expandVars(entry.command, env);
+  if (/[\\/]/.test(command) && !path.isAbsolute(command)) return [`the command ${printableLine(command)} is a path inside this folder`];
+  const base = path.basename(command, path.extname(command)).toLowerCase();
+  const reasons: string[] = [];
+  if (PACKAGE_RUNNERS.has(base)) {
+    const found = PACKAGE_FILES.filter((name) => exists(path.join(cwd, name)));
+    if (found.length > 0) reasons.push(`this folder has ${found.join(", ")}, which can change the package ${base} runs`);
+  }
+  if (platform === "win32" && !/[\\/]/.test(command)) {
+    const pathext = Object.entries(env).find(([key]) => key.toUpperCase() === "PATHEXT")?.[1];
+    const exts = path.extname(command) === "" ? (pathext ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean) : [""];
+    const planted = exts.map((ext) => `${command}${ext.toLowerCase()}`).find((name) => exists(path.join(cwd, name)));
+    if (planted !== undefined) reasons.push(`this folder has a file named ${printableLine(planted)}`);
+  }
+  return reasons;
 }
 
 function nodeCheck(nodeVersion: string, execPath: string): DoctorCheck {
@@ -160,13 +215,14 @@ interface LaunchContext {
   readonly timeoutMs: number;
 }
 
-function probe(spec: LaunchSpec, ctx: LaunchContext): Promise<ProbeResult> {
+function probe(spec: LaunchSpec, ctx: LaunchContext, resolved?: string): Promise<ProbeResult> {
   return probeLaunch(spec, {
     timeoutMs: ctx.timeoutMs,
     cwd: ctx.cwd,
     baseEnv: ctx.env,
     platform: ctx.platform,
     clientVersion: pkg.version,
+    ...(resolved === undefined ? {} : { resolved }),
     ...(ctx.spawn ? { spawn: ctx.spawn } : {}),
     ...(ctx.stop ? { stop: ctx.stop } : {}),
   });
@@ -180,10 +236,18 @@ function expandEntry(entry: ClientEntry, env: NodeJS.ProcessEnv): LaunchSpec {
   };
 }
 
-function secretsOf(spec: LaunchSpec): string[] {
-  return Object.entries(spec.env)
+/**
+ * Values never to show for an entry: its secret-named env values, and every value `${VAR}`
+ * expansion takes from the environment, wherever the reference sits (command, args or env).
+ */
+function hiddenValues(entry: ClientEntry, spec: LaunchSpec, env: NodeJS.ProcessEnv): string[] {
+  const secrets = Object.entries(spec.env)
     .filter(([key, value]) => SECRET_KEY.test(key) && value.length > 0)
     .map(([, value]) => value);
+  const expanded = [entry.command, ...entry.args, ...Object.values(entry.env)].flatMap((text) =>
+    [...text.matchAll(/\$\{([A-Za-z_]\w*)(?::-[^}]*)?\}/g)].map((match) => env[match[1] ?? ""] ?? ""),
+  );
+  return [...new Set([...secrets, ...expanded])].filter((value) => value.length > 0);
 }
 
 function outcome(name: string, result: ProbeResult, notes: readonly string[], secrets: readonly string[]): DoctorCheck {
@@ -262,24 +326,32 @@ export async function runDoctor(deps: DoctorDeps = {}): Promise<DoctorReport> {
 
   for (const entry of configs.entries) {
     const spec = expandEntry(entry, env);
+    const hidden = hiddenValues(entry, spec, env);
     const resolved = resolveCommand(spec.command, { ...env, ...spec.env }, platform, cwd, deps.exists);
+    // Shown as written, so a ${VAR} reference stays a reference and never becomes its value.
+    const shown = redactText(commandLine(entry.command, entry.args), hidden);
+    const name = `launch ${printableLine(entry.name)}`;
     const notes = [
-      `command: ${commandLine(spec.command, spec.args)}`,
-      `from: ${entry.scope} scope, ${entry.file}`,
-      ...(Object.keys(spec.env).length > 0 ? [`env keys: ${Object.keys(spec.env).join(", ")}`] : []),
-      `resolves to: ${resolved ?? "nothing on PATH"}`,
-    ].map((note) => redactText(note, secretsOf(spec)));
-    if (entry.scope === "project" && !(await (deps.trustProject ?? NO_TRUST)(entry.name, redactText(commandLine(spec.command, spec.args), secretsOf(spec))))) {
-      checks.push({
-        name: `launch ${entry.name}`,
-        state: "warn",
-        detail: "not started: the command comes from ./.mcp.json in this folder",
-        notes,
-        fix: ["Check the command above, then run ldesk doctor in a terminal and confirm, or pass --yes."],
-      });
-      continue;
+      `command: ${shown}`,
+      `from: ${entry.scope} scope, ${printableLine(entry.file)}`,
+      ...(Object.keys(spec.env).length > 0 ? [`env keys: ${Object.keys(spec.env).map(printableLine).join(", ")}`] : []),
+      `resolves to: ${resolved === undefined ? "nothing on PATH" : printableLine(resolved)}`,
+    ].map((note) => redactText(note, hidden));
+    const reasons = launchRisks(entry, cwd, platform, { ...env, ...spec.env }, deps.exists);
+    if (reasons.length > 0) {
+      const request: LaunchRequest = { name: printableLine(entry.name), command: shown, scope: entry.scope, reasons };
+      if (!(await (deps.confirmLaunch ?? NO_TRUST)(request))) {
+        checks.push({
+          name,
+          state: "warn",
+          detail: `not started: ${reasons.join("; ")}`,
+          notes,
+          fix: ["Check the command and this folder, then run ldesk doctor in a terminal and confirm, or pass --yes."],
+        });
+        continue;
+      }
     }
-    const check = outcome(`launch ${entry.name}`, await probe(spec, ctx), notes, secretsOf(spec));
+    const check = outcome(name, await probe(spec, ctx, resolved), notes, hidden);
     if (check.state !== "fail") {
       checks.push(check);
       continue;
