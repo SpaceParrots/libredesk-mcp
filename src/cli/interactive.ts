@@ -5,7 +5,7 @@
  */
 
 import { withProfile } from "../context.js";
-import { CancelledError } from "../errors.js";
+import { CancelledError, DeclinedError } from "../errors.js";
 import type { Domain, Operation } from "../ops/define.js";
 import { operationFields, type FieldInfo } from "../ops/fields.js";
 import { askField, collectMissing, confirmImpact } from "./confirm.js";
@@ -18,7 +18,7 @@ const PLAIN = /^[\w./:=+,-]+$/;
 
 function quote(value: string): string {
   const text = value.startsWith("@") ? `@${value}` : value;
-  return PLAIN.test(text) && !text.startsWith("-") ? text : `"${text.replaceAll(/[\\"$`]/g, String.raw`\$&`)}"`;
+  return PLAIN.test(text) ? text : `"${text.replaceAll(/[\\"$`]/g, String.raw`\$&`)}"`;
 }
 
 function render(info: FieldInfo, value: unknown): string {
@@ -26,6 +26,12 @@ function render(info: FieldInfo, value: unknown): string {
   if (typeof value === "number") return String(value);
   if (info.kind === "json" && !info.array) return `'${(JSON.stringify(value) ?? "").replaceAll("'", String.raw`'\''`)}'`;
   return quote(String(value));
+}
+
+/** A value starting with `-` is joined with `=` so the parser does not read it as an option. */
+function flagWith(flag: string, info: FieldInfo, value: unknown): string[] {
+  const text = render(info, value);
+  return typeof value === "string" || typeof value === "number" ? (String(value).startsWith("-") ? [`${flag}=${text}`] : [flag, text]) : [flag, text];
 }
 
 /** The shell command that repeats a run with `values`: positionals first, then flags in field order. */
@@ -38,7 +44,8 @@ export function commandLineFor(domain: Domain, op: Operation, values: Record<str
   const parts = [...path];
   const bare = new Set<string>();
   for (const name of op.positional ?? []) {
-    if (!given(name) || fields.get(name)?.array === true) break;
+    const first = values[name];
+    if (!given(name) || fields.get(name)?.array === true || ((typeof first === "string" || typeof first === "number") && String(first).startsWith("-"))) break;
     bare.add(name);
     parts.push(render(fields.get(name) as FieldInfo, values[name]));
   }
@@ -47,8 +54,8 @@ export function commandLineFor(domain: Domain, op: Operation, values: Record<str
     if (value === undefined || bare.has(name)) continue;
     const flag = `--${kebab(name)}`;
     if (typeof value === "boolean") parts.push(value ? flag : `--no-${kebab(name)}`);
-    else if (Array.isArray(value) && info.array) for (const item of value) parts.push(flag, render(info, item));
-    else parts.push(flag, render(info, value));
+    else if (Array.isArray(value) && info.array) for (const item of value) parts.push(...flagWith(flag, info, item));
+    else parts.push(...flagWith(flag, info, value));
   }
   return parts.join(" ");
 }
@@ -107,8 +114,9 @@ export async function runInteractive(domains: readonly Domain[], deps: CliDeps):
       try {
         await runOnce(domains, deps);
       } catch (error) {
-        if (error instanceof CancelledError) throw error;
-        printError(error);
+        if (error instanceof DeclinedError) deps.prompt.note("Cancelled.");
+        else if (error instanceof CancelledError) throw error;
+        else printError(error);
       }
       again = await deps.prompt.confirm({ message: "Do something else?", initialValue: true });
     } catch (error) {

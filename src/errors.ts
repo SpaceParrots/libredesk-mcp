@@ -149,6 +149,9 @@ export class CancelledError extends LibreDeskError {
   }
 }
 
+/** The user answered No to a confirmation. Exits like a cancel on the command line; interactive mode carries on. */
+export class DeclinedError extends CancelledError {}
+
 const NETWORK_CODES = new Set(["ENOTFOUND", "ECONNREFUSED", "ETIMEDOUT"]);
 
 function errnoCode(err: unknown): string | undefined {
