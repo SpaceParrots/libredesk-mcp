@@ -18,6 +18,9 @@ function fakeFetch(data: unknown) {
   return { fetchImpl, calls };
 }
 
+const htmlFetch: typeof fetch = () =>
+  Promise.resolve(new Response("<html>Welcome</html>", { status: 200, headers: { "content-type": "text/html" } }));
+
 function op(name: string) {
   const found = lookupDomain.operations.find((o) => o.name === name);
   if (!found) throw new Error(`no operation ${name}`);
@@ -129,6 +132,15 @@ describe("lookup domain", () => {
         hint: expect.stringContaining("base URL"),
       });
     }
+  });
+
+  it("an HTML page instead of a list fails with the base URL hint", async () => {
+    await expect(runOperation(op("tags"), {}, { profile, fetchImpl: htmlFetch })).rejects.toMatchObject({
+      hint: expect.stringContaining("base URL"),
+    });
+    await expect(runOperation(op("me"), {}, { profile, fetchImpl: htmlFetch })).rejects.toMatchObject({
+      hint: expect.stringContaining("base URL"),
+    });
   });
 
   it("non-object items in a list are dropped", async () => {

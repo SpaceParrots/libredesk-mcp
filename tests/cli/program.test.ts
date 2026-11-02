@@ -91,6 +91,14 @@ function stubMe(): ReturnType<typeof vi.fn> {
 const loginArgs = ["login", "--url", "https://help.desk.example/", "--api-key", "key-12345678", "--api-secret", "top-secret-value"];
 
 describe("login", () => {
+  it("fails with the base URL hint and saves nothing when the server answers HTML", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(new Response("<html></html>", { status: 200, headers: { "content-type": "text/html" } }))));
+    await run(loginArgs);
+    expect(errors).toHaveLength(1);
+    expect((errors[0] as { hint?: string }).hint).toContain("base URL");
+    expect(Object.keys((await loadConfig()).profiles)).toEqual([]);
+  });
+
   it("saves a profile named after the host and makes the first one active", async () => {
     stubMe();
     await run(loginArgs);

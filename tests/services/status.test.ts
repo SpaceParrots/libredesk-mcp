@@ -38,4 +38,14 @@ describe("getStatus", () => {
     const report = await getStatus({ env: env(), fetchImpl });
     expect(report).toMatchObject({ reachable: true, agent: "me@x.y", targetVersion: "2.9.2" });
   });
+
+  it("reports a wrong base URL (HTML answer) as not reachable, with the hint", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response("<html>Welcome</html>", { status: 200, headers: { "content-type": "text/html" } }),
+    );
+    const report = await getStatus({ env: env(), fetchImpl });
+    expect(report.reachable).toBe(false);
+    expect(report.agent).toBeUndefined();
+    expect(report.hint).toContain("base URL");
+  });
 });
