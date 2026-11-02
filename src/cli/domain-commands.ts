@@ -53,20 +53,25 @@ function toOption(spec: FlagSpec): Option {
   return option;
 }
 
+/** The opposite flag of a boolean flag: `--x` gives `--no-x` and `--no-x` gives `--x`; undefined for value flags. */
+function booleanMirror(flags: string): string | undefined {
+  if (flags.includes(" ")) return undefined;
+  return flags.startsWith("--no-") ? `--${flags.slice("--no-".length)}` : `--no-${flags.slice("--".length)}`;
+}
+
 /**
- * The options of an operation. A boolean that only has `--no-x` also gets a hidden `--x`:
- * commander would otherwise default the value to true and the flag would always be sent.
+ * The options of an operation. Every boolean accepts both `--x` and `--no-x`; the flag the help
+ * does not list is added hidden. A boolean with only `--no-x` would otherwise default to true in
+ * commander and always be sent, and interactive mode prints either form in its repeat command.
  */
 function optionsFor(op: Operation): Option[] {
   const specs = flagsFor(op);
   const options: Option[] = [];
   for (const spec of specs) {
     options.push(toOption(spec));
-    if (spec.flags.startsWith("--no-")) {
-      const positive = `--${spec.flags.slice("--no-".length)}`;
-      if (!specs.some((other) => other.field === spec.field && other.flags === positive)) {
-        options.push(new Option(positive).hideHelp());
-      }
+    const mirror = booleanMirror(spec.flags);
+    if (mirror !== undefined && !specs.some((other) => other.field === spec.field && other.flags === mirror)) {
+      options.push(new Option(mirror).hideHelp());
     }
   }
   return options;
