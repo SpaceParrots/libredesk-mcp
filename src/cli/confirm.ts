@@ -5,7 +5,7 @@
  * message naming what to pass instead.
  */
 
-import { CancelledError, ConfirmationRequiredError, InputError } from "../errors.js";
+import { ConfirmationRequiredError, DeclinedError, InputError } from "../errors.js";
 import { SECRET_KEYS } from "../mask.js";
 import type { Operation } from "../ops/define.js";
 import { operationFields, type FieldInfo } from "../ops/fields.js";
@@ -84,7 +84,7 @@ export async function collectMissing(
 /**
  * Ask for confirmation before a `caution` or `destructive` operation. `read` and `write`
  * operations pass. `--yes` passes. Without a TTY this throws {@link ConfirmationRequiredError};
- * with one it asks (default No) and a No throws {@link CancelledError}.
+ * with one it asks (default No) and a No throws {@link DeclinedError}.
  */
 export async function confirmImpact(
   op: Operation,
@@ -97,5 +97,5 @@ export async function confirmImpact(
     throw new ConfirmationRequiredError(effect, { hint: "Pass --yes to confirm and run it." });
   }
   const confirmed = await deps.prompt.confirm({ message: effect, initialValue: false });
-  if (!confirmed) throw new CancelledError();
+  if (!confirmed) throw new DeclinedError();
 }

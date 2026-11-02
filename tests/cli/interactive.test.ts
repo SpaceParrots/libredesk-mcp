@@ -50,6 +50,11 @@ describe("commandLineFor", () => {
     );
     expect(commandLineFor(demo, wipe, { id: 1, note: null })).toBe("ldesk demo wipe 1 --note null");
   });
+
+  it("joins values starting with a dash to their flag", () => {
+    expect(commandLineFor(demo, wipe, { id: 1, note: "-x y", tags: ["-a", "b"] })).toBe('ldesk demo wipe 1 --note="-x y" --tags=-a --tags b');
+    expect(commandLineFor(demo, wipe, { id: -3 })).toBe("ldesk demo wipe --id=-3");
+  });
 });
 
 interface Script {
@@ -108,10 +113,27 @@ describe("runInteractive", () => {
     expect(log.at(-1)).toBe("confirm:Do something else?");
   });
 
-  it("a No at the destructive confirmation cancels the session without running", async () => {
-    const prompt = scripted({ select: ["demo", "wipe"], text: ["5"], confirm: [false, false] });
+  it("a No at the destructive confirmation runs nothing and asks what next", async () => {
+    const log: string[] = [];
+    // confirms: optional fields no, destructive No, something else no
+    const prompt = scripted({ select: ["demo", "wipe"], text: ["5"], confirm: [false, false, false] }, log);
     const { d, runs } = setup(prompt);
-    await expect(runInteractive([demo], d)).rejects.toBeInstanceOf(CancelledError);
+    await runInteractive([demo], d);
+    expect(runs).toHaveLength(0);
+    expect(log).toContain("note:undefined:Cancelled.");
+    expect(log.at(-1)).toBe("confirm:Do something else?");
+  });
+
+  it("Ctrl+C at the destructive confirmation still ends the session", async () => {
+    const onError = vi.fn((): never => {
+      throw new Error("exited");
+    });
+    const base = scripted({ select: ["demo", "wipe"], text: ["5"], confirm: [false] });
+    let confirms = 0;
+    const prompt: PromptAdapter = { ...base, confirm: (o) => (++confirms === 2 ? Promise.reject(new CancelledError()) : base.confirm(o)) };
+    const { d, runs } = setup(prompt, { onError });
+    await expect(runInteractive([demo], d)).rejects.toThrow("exited");
+    expect(onError).toHaveBeenCalledWith(expect.any(CancelledError));
     expect(runs).toHaveLength(0);
   });
 
