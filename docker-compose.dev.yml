@@ -1,0 +1,54 @@
+name: ldesk-dev
+
+services:
+  app:
+    image: libredesk/libredesk:v2.9.2
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${LD_PORT:-9000}:9000"
+    environment:
+      # Applied on first install only; must be 10-72 characters with upper, lower, digit and special character.
+      LIBREDESK_SYSTEM_USER_PASSWORD: ${LIBREDESK_SYSTEM_USER_PASSWORD:-ldesk-dev-Password1}
+    networks:
+      - libredesk
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./dev/data/uploads:/libredesk/uploads:rw
+      - ./dev/config.toml:/libredesk/config.toml
+    command: [sh, -c, "./libredesk --install --idempotent-install --yes --config /libredesk/config.toml && ./libredesk --upgrade --yes --config /libredesk/config.toml && ./libredesk --config /libredesk/config.toml"]
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    networks:
+      - libredesk
+    environment:
+      POSTGRES_USER: libredesk
+      POSTGRES_PASSWORD: libredesk
+      POSTGRES_DB: libredesk
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U libredesk -d libredesk"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks:
+      - libredesk
+    volumes:
+      - redis-data:/data
+
+networks:
+  libredesk:
+
+volumes:
+  postgres-data:
+  redis-data:
