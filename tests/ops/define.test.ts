@@ -150,6 +150,7 @@ describe("defineDomain", () => {
     const domain = {
       name: "help-center",
       tool: "libredesk_help_center",
+      actionPrefix: "help_center",
       toolset: "knowledge",
       summary: "s",
       operations: [op("list"), op("get")],
@@ -162,6 +163,7 @@ describe("defineDomain", () => {
       defineDomain({
         name: "help-center",
         tool: "libredesk_help_center",
+        actionPrefix: "help_center",
         toolset: "knowledge",
         summary: "s",
         operations: [op("list"), op("list")],
@@ -171,7 +173,7 @@ describe("defineDomain", () => {
 
   it("requires a description for every operation group", () => {
     const grouped = defineOperation({ ...base, name: "collection_list", group: "collection", path: "/x", input: {} });
-    const domain = { name: "help-center", tool: "libredesk_help_center", toolset: "knowledge", summary: "s", operations: [grouped] } as const;
+    const domain = { name: "help-center", tool: "libredesk_help_center", actionPrefix: "help_center", toolset: "knowledge", summary: "s", operations: [grouped] } as const;
     expect(() => defineDomain(domain)).toThrow(/help-center: group collection needs a description in groups/);
     const described = { ...domain, groups: { collection: "Manage collections." } };
     expect(defineDomain(described)).toBe(described);

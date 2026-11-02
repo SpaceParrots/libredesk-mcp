@@ -13,6 +13,13 @@ import { fieldInfo } from "./fields.js";
 /** How much an operation changes on the server. `caution` and `destructive` need confirmation. */
 export type Impact = "read" | "write" | "caution" | "destructive";
 
+/**
+ * Shared MCP tool that holds the risky actions of every domain, so a client can allowlist the
+ * domain tools while publishing and deleting still ask: `publish` for changes to what customers
+ * and assistants see, `delete` for deletes.
+ */
+export type RiskTool = "publish" | "delete";
+
 /** MCP toolset a domain belongs to, selectable through `LIBREDESK_TOOLSETS`. */
 export type Toolset = "knowledge" | "ai" | "workflow" | "support" | "core";
 
@@ -77,6 +84,11 @@ export interface Escalation {
   readonly impact: "caution" | "destructive";
   /** What happens then, shown before confirming. */
   readonly effect: string;
+  /**
+   * Optional input fields that alone make `when` true. The MCP domain tool leaves them out, so it
+   * can never take the riskier path; that path is an action of a {@link RiskTool}.
+   */
+  readonly fields?: readonly string[];
 }
 
 /** One LibreDesk endpoint (or a composite of several), declared once. */
@@ -107,6 +119,8 @@ export interface Operation<S extends z.ZodRawShape = z.ZodRawShape> {
   readonly positional?: readonly FieldName<S>[];
   /** Whether the operation is exposed over MCP. Defaults to true. */
   readonly mcp?: boolean;
+  /** Shared MCP tool for the operation; defaults to `publish` for caution and `delete` for destructive. */
+  readonly mcpTool?: RiskTool;
   /** Custom implementation replacing the default single request. */
   readonly run?: Callback<[input: z.infer<z.ZodObject<S>>, ctx: OperationContext], Promise<unknown>>;
   /** Transforms the response before it is returned. */
@@ -127,6 +141,8 @@ export interface Domain {
   readonly toolset: Toolset;
   /** One line describing the domain. */
   readonly summary: string;
+  /** Prefix of ungrouped action names in a shared {@link RiskTool}, e.g. `article` for `article_delete`. */
+  readonly actionPrefix: string;
   /** CLI description of each operation group, keyed by group name; every group needs one. */
   readonly groups?: Readonly<Record<string, string>>;
   /** The domain's operations. */
@@ -196,6 +212,23 @@ function assertEscalation(op: Operation): void {
   if (!escalate.effect) throw new Error(`${op.name}: escalate needs an effect`);
   if (!escalate.condition) throw new Error(`${op.name}: escalate needs a condition`);
   if (IMPACT_RANK[escalate.impact] <= IMPACT_RANK[op.impact]) throw new Error(`${op.name}: escalate must raise the impact`);
+  for (const key of escalate.fields ?? []) {
+    const schema = Object.hasOwn(op.input, key) ? op.input[key] : undefined;
+    if (schema === undefined) throw new Error(`${op.name}: escalate field ${key} is not an input field`);
+    if (fieldInfo(key, schema).required) throw new Error(`${op.name}: escalate field ${key} must be optional`);
+  }
+}
+
+/** The shared MCP tool an operation belongs in, or undefined when it stays in its domain tool. */
+export function riskToolOf(op: Operation): RiskTool | undefined {
+  if (op.mcpTool !== undefined) return op.mcpTool;
+  if (op.impact === "destructive") return "delete";
+  return op.impact === "caution" ? "publish" : undefined;
+}
+
+/** The action name of an operation in a shared {@link RiskTool}: grouped names stay, others get the domain prefix. */
+export function riskActionName(domain: Domain, op: Operation): string {
+  return op.group === undefined ? `${domain.actionPrefix}_${op.name}` : op.name;
 }
 
 /** Check an operation definition and return it unchanged. Throws on an inconsistent definition. */

@@ -7,6 +7,8 @@
 
 import { z } from "zod";
 import { readArticleContent, toArticleHtml, type ContentFormat } from "../content/markdown.js";
+import { isRecord } from "../guards.js";
+import { forIds, idOrIds } from "../ops/bulk.js";
 import { defineDomain, defineOperation } from "../ops/define.js";
 import { mergeForUpdate } from "../ops/merge.js";
 
@@ -44,22 +46,13 @@ const formatField = z
     '"markdown" (default) or "html" for what markdown cannot express, such as tables.',
   );
 
-const pathCollectionId = z
-  .number()
-  .int()
-  .default(NO_COLLECTION)
-  .describe("LibreDesk ignores it (lookup by id); leave it out.");
-
 const title = z.string().describe("Article title.");
 const content = z
   .string()
-  .describe(
-    "Article body. In markdown a literal tilde reads as &#126;; write it back as is. ~~x~~ is strikethrough.",
-  );
+  .describe("Article body. A literal ~ reads back as &#126;; send it back as is.");
 
 /** Optional fields shared by article create and update. */
 const articleSettings = {
-  slug: z.string().optional().describe("Ignored; LibreDesk makes the slug from the title."),
   locale: z.string().optional().describe("Locale code; must match the collection's locale."),
   excerpt: z.string().optional().describe("Short summary for lists and search."),
   meta_title: z.string().optional().describe("SEO title."),
@@ -68,11 +61,7 @@ const articleSettings = {
   sort_order: z.number().int().optional().describe("Position in the collection, lowest first."),
 };
 
-const aiEnabled = z
-  .boolean()
-  .describe(
-    "Let AI assistants answer from it once published. True by default on create; update keeps it unless given.",
-  );
+const aiEnabled = z.boolean().describe("Let AI assistants use it once published. True by default on create.");
 
 const status = z.enum(["draft", "published"]).describe('"draft" (not public) or "published".');
 
@@ -84,6 +73,14 @@ function asRecords(data: unknown): Record<string, unknown>[] {
 
 function pick(source: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
   return Object.fromEntries(keys.filter((key) => key in source).map((key) => [key, source[key]]));
+}
+
+/** Fields a write returns: enough to confirm it and chain the next call, without the content just sent. */
+const WRITE_RESULT_KEYS = ["id", "collection_id", "title", "slug", "locale", "status", "ai_enabled", "updated_at"] as const;
+
+/** The short result of an article write; `get` returns the whole article. Anything but a record passes through. */
+export function presentArticleWrite(data: unknown): unknown {
+  return isRecord(data) ? pick(data, WRITE_RESULT_KEYS) : data;
 }
 
 function presentArticle(data: unknown, format: ContentFormat): Record<string, unknown> {
@@ -145,10 +142,10 @@ const get = defineOperation({
   name: "get",
   summary: "Get one article with content and translations.",
   method: "GET",
-  path: "/api/v1/collections/{collection_id}/articles/{id}",
+  // LibreDesk looks the article up by id alone; the collection in the path is not used.
+  path: "/api/v1/collections/0/articles/{id}",
   input: {
     id: articleId,
-    collection_id: pathCollectionId,
     format: formatField.default("markdown"),
   },
   positional: ["id"],
@@ -156,17 +153,16 @@ const get = defineOperation({
   permission: PERMISSION,
   undocumented: true,
   run: async (input, ctx) =>
-    presentArticle(await ctx.call("GET", `/api/v1/collections/${input.collection_id}/articles/${input.id}`), input.format),
+    presentArticle(await ctx.call("GET", `/api/v1/collections/${NO_COLLECTION}/articles/${input.id}`), input.format),
   cli: {
     notes: ["Prints the whole article with its content as markdown; --format html prints the content as the stored HTML instead. Content markdown cannot express comes back as HTML with content_format: html."],
     examples: ["ldesk articles get 42", "ldesk articles get 42 --format html", "ldesk articles get 42 --json"],
-    hidden: ["collection_id"],
   },
 });
 
 const create = defineOperation({
   name: "create",
-  summary: "Create an article in a collection, as draft unless status is published.",
+  summary: "Create a draft article in a collection.",
   method: "POST",
   path: "/api/v1/collections/{collection_id}/articles",
   input: {
@@ -187,14 +183,21 @@ const create = defineOperation({
     const body = { ...rest, content: toArticleHtml(input.content, format) };
     return ctx.call("POST", `/api/v1/collections/${collection}/articles`, { body });
   },
-  escalate: { when: (values) => values.status === "published", condition: "status is published", impact: "caution", effect: PUBLISH_EFFECT },
+  present: presentArticleWrite,
+  escalate: {
+    when: (values) => values.status === "published",
+    condition: "status is published",
+    impact: "caution",
+    effect: PUBLISH_EFFECT,
+    fields: ["status"],
+  },
   cli: {
     notes: [
+      "Prints the new article's id, slug, status and ai_enabled, not its content.",
       "New articles are drafts. --status published makes the article public at once (asks for confirmation); AI assistants answer from published articles unless --no-ai-enabled is given.",
       'Without --locale the article is "en". For a collection in another locale pass its locale, which `ldesk help-center collection list <help-center-id>` prints.',
       "Read long content from a file with --content @file.md.",
     ],
-    hidden: ["slug"],
     examples: [
       'ldesk articles create 7 --title "Refund policy" --content @refunds.md',
       'ldesk articles create 7 --title "Refund policy" --content @refunds.md --status published --yes',
@@ -205,7 +208,7 @@ const create = defineOperation({
 
 const update = defineOperation({
   name: "update",
-  summary: "Change only the given fields of an article. Publish with set_status, move with move.",
+  summary: "Change only the given fields of an article.",
   method: "PUT",
   path: "/api/v1/articles/{id}",
   input: {
@@ -226,25 +229,37 @@ const update = defineOperation({
     const body = mergeForUpdate(current, changes, ARTICLE_KEYS);
     return ctx.call("PUT", `/api/v1/articles/${input.id}`, { body });
   },
+  present: presentArticleWrite,
   cli: {
-    notes: ["Only the given fields change. Publish or unpublish with `ldesk articles set-status`, move with `ldesk articles move`."],
+    notes: [
+      "Only the given fields change. Publish or unpublish with `ldesk articles set-status`, move with `ldesk articles move`.",
+      "The slug stays as it is, even when the title changes.",
+    ],
     examples: ['ldesk articles update 42 --title "Refunds"', "ldesk articles update 42 --content @refunds.md", "ldesk articles update 42 --no-ai-enabled"],
-    hidden: ["slug"],
   },
 });
 
 const setStatus = defineOperation({
   name: "set_status",
-  summary: "Publish an article or set it back to draft.",
+  summary: "Publish articles or set them back to draft.",
   method: "PUT",
   path: "/api/v1/articles/{id}/status",
-  input: { id: articleId, status },
+  input: { id: idOrIds("Article id or list of ids."), status },
   positional: ["id"],
   impact: "caution",
   effect: PUBLISH_EFFECT,
   permission: PERMISSION,
   undocumented: true,
-  cli: { examples: ["ldesk articles set-status 42 --status published --yes", "ldesk articles set-status 42 --status draft --yes"] },
+  run: (input, ctx) =>
+    forIds(input.id, async (id) => presentArticleWrite(await ctx.call("PUT", `/api/v1/articles/${id}/status`, { body: { status: input.status } }))),
+  cli: {
+    notes: ["Takes one id or a JSON list such as [42,43]. A list sets them one by one and prints ok, failed and an entry per id, so one failure does not stop the others."],
+    examples: [
+      "ldesk articles set-status 42 --status published --yes",
+      "ldesk articles set-status '[42,43,44]' --status published --yes",
+      "ldesk articles set-status 42 --status draft --yes",
+    ],
+  },
 });
 
 const move = defineOperation({
@@ -257,6 +272,7 @@ const move = defineOperation({
   impact: "write",
   permission: PERMISSION,
   undocumented: true,
+  present: presentArticleWrite,
   cli: {
     notes: ["The target collection must belong to the article's help center."],
     examples: ["ldesk articles move 42 --collection-id 9"],
@@ -335,20 +351,22 @@ const remove = defineOperation({
   name: "delete",
   summary: "Delete an article.",
   method: "DELETE",
-  path: "/api/v1/collections/{collection_id}/articles/{id}",
-  input: { id: articleId, collection_id: pathCollectionId },
+  // LibreDesk looks the article up by id alone; the collection in the path is not used.
+  path: "/api/v1/collections/0/articles/{id}",
+  input: { id: articleId },
   positional: ["id"],
   impact: "destructive",
   effect: "Deletes the article. Linked translations stay.",
   permission: PERMISSION,
   undocumented: true,
-  cli: { examples: ["ldesk articles delete 42 --yes"], hidden: ["collection_id"] },
+  cli: { examples: ["ldesk articles delete 42 --yes"] },
 });
 
 /** Knowledge base articles: one CLI command, one MCP tool. */
 export const articlesDomain = defineDomain({
   name: "articles",
   tool: "libredesk_articles",
+  actionPrefix: "article",
   toolset: "knowledge",
   summary: "Manage knowledge base articles, written and read as markdown.",
   operations: [list, get, create, update, setStatus, move, reorder, linkable, linkTranslation, unlinkTranslation, remove],

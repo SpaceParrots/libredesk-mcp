@@ -27,6 +27,8 @@ Every endpoint is declared once as an `Operation` (`src/ops/define.ts`, built wi
 
 - `src/domains/*.ts` group operations into a `Domain` (one CLI command, one MCP tool). `src/domains/index.ts` exports `DOMAINS`.
 - `src/cli/domain-commands.ts` generates the Commander commands, `src/cli/interactive.ts` the interactive menu, `src/mcp/domain-tool.ts` and `src/mcp/action-tool.ts` the MCP tools, `src/ops/catalog.ts` the catalog.
+- `src/mcp/risk-tools.ts` builds the shared `libredesk_publish` (caution, or `mcpTool: "publish"`) and `libredesk_delete` (destructive) tools from every domain, so clients can allow the domain tools and still ask before publishing or deleting. Their action names are the grouped op name, or `<actionPrefix>_<name>`.
+- `src/ops/bulk.ts` has `idOrIds` and `forIds` for actions that take one id or a list and report per id.
 - `src/ops/run.ts` validates input (strict zod), builds the request (path params, query, body), runs a custom `run` if the operation has one, applies `present`, and maps errors.
 - `src/ops/merge.ts` has `mergeForUpdate`, the read-modify-write helper for updates.
 - `src/http.ts` is the only code that talks to the network: auth header `Authorization: token <key>:<secret>`, base URL normalisation, response envelope unwrapping, readable errors for non-JSON responses.
@@ -43,12 +45,12 @@ Every endpoint is declared once as an `Operation` (`src/ops/define.ts`, built wi
 
 1. Add a `defineOperation` to the domain file, with `name` (snake_case, unique per domain), `summary`, `method`, `path`, `input` (zod shape, `.describe()` on every field), `impact` and, for `caution` or `destructive`, an `effect`. Add `permission` when you know the role permission the endpoint needs.
 2. Add `cli` help, which only `--help` shows and the MCP tools never carry (so it costs no model context): `examples` (one to three full `ldesk ...` command lines that run without a terminal, with `--yes` where the command asks and `@file` for long content), `notes` for what the summary does not say (what a list prints, where an id comes from, what the server does on its own), `hidden` for optional fields the help should not list (they stay accepted as flags), and `flags` when a boolean's `--x` or `--no-x` text would read wrong from the description. `tests/cli/examples.test.ts` runs every example.
-3. When only some inputs make the operation risky, add `escalate` (`when`, `condition`, `impact`, `effect`) instead of raising `impact`: `articles create` asks like `set_status` only when `status` is `published`. The CLI and interactive mode confirm it, the MCP action summary says `CAUTION when <condition>: <effect>`.
+3. When only some inputs make the operation risky, add `escalate` (`when`, `condition`, `impact`, `effect`) instead of raising `impact`: `articles create` asks like `set_status` only when `status` is `published`. The CLI and interactive mode confirm it. List the optional fields that alone cause it in `escalate.fields`: the MCP domain tool leaves them out, so it can never publish, and the risky path stays an action of `libredesk_publish`. Without `fields` the MCP summary says `CAUTION when <condition>: <effect>`.
 4. Put it in the domain's `operations` array. An operation with a `group` needs a description of that group in the domain's `groups`.
 5. Add unit tests in `tests/domains/` and, when 2.9.2 has the endpoint, a live test in `tests/live/`.
 6. Run `npm run verify`, and the token budget test with it.
 
-A new domain is a file in `src/domains/` exporting a `Domain` (`name` kebab-case, `tool` as `libredesk_<domain>`, `toolset`, `summary`, `groups` when it has grouped operations, `operations`) plus an entry in `DOMAINS`. The CLI command, the MCP tool and the catalog follow with no other change.
+A new domain is a file in `src/domains/` exporting a `Domain` (`name` kebab-case, `tool` as `libredesk_<domain>`, `actionPrefix` for its actions in the shared tools, `toolset`, `summary`, `groups` when it has grouped operations, `operations`) plus an entry in `DOMAINS`. The CLI command, the MCP tool and the catalog follow with no other change.
 
 ## Rules learned in this phase
 
@@ -64,6 +66,8 @@ A new domain is a file in `src/domains/` exporting a `Domain` (`name` kebab-case
 - Every operation built from the LibreDesk source rather than the documented OpenAPI spec has `undocumented: true`. `docs/api-coverage.md` lists them; regenerate with `npm run docs:undocumented` after a build and update that file.
 - Shapes of undocumented endpoints come from the LibreDesk v2.9.2 source: a fresh clone of tag `v2.9.2` (`git clone --depth 1 --branch v2.9.2 https://github.com/abhinavxd/libredesk.git`). Read the handler and request struct (`cmd/*.go`, `internal/*/models`), do not guess field names or required fields.
 - Article content is markdown by default; stored HTML that markdown would lose comes back as HTML with `content_format: "html"`.
+- Writes that echo content (article and snippet create, update, set_status, move) return a short record through `present`; `get` returns the whole one. Do not send back content the caller just wrote.
+- An article reaches the AI assistants only when it is published, `ai_enabled` is on, every ancestor collection is published and the help center is active (`internal/ai/queries.sql`, `get-embeddable-help-articles`). LibreDesk ignores a slug on create and update: it builds it from the title on create (accents dropped, so "ä" becomes "a") and keeps it on update.
 - New articles default to `draft` with `ai_enabled` true. Publishing goes through `set_status`.
 - Files open with a JSDoc `@module` block and every export has a JSDoc comment. File names are kebab-case. Service inputs and config objects are `readonly`, and config changes return new objects.
 - Commits are Conventional Commits, one line, no co-author line. Markdown files have one line per paragraph and no hard wrapping.

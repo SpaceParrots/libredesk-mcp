@@ -18,6 +18,8 @@ const TOOLS = [
   "libredesk_articles",
   "libredesk_ai_knowledge",
   "libredesk_lookup",
+  "libredesk_publish",
+  "libredesk_delete",
   "libredesk_request",
   "libredesk_status",
 ];
@@ -50,7 +52,7 @@ describe.skipIf(!liveProfile())("MCP server over stdio against local LibreDesk",
 
   afterAll(async () => {
     if (helpCenterId !== undefined) {
-      await client.callTool({ name: "libredesk_help_center", arguments: { action: "delete", id: helpCenterId } }).catch(() => undefined);
+      await client.callTool({ name: "libredesk_delete", arguments: { action: "help_center_delete", id: helpCenterId } }).catch(() => undefined);
     }
     await client.close();
     rmSync(configDir, { recursive: true, force: true });
@@ -93,7 +95,7 @@ describe.skipIf(!liveProfile())("MCP server over stdio against local LibreDesk",
     const listed = await client.callTool({ name: "libredesk_help_center", arguments: { action: "list" } });
     expect((JSON.parse(textOf(listed)) as { id: number }[]).map((hc) => hc.id)).toContain(helpCenterId);
 
-    const deleted = await client.callTool({ name: "libredesk_help_center", arguments: { action: "delete", id: helpCenterId } });
+    const deleted = await client.callTool({ name: "libredesk_delete", arguments: { action: "help_center_delete", id: helpCenterId } });
     expect(deleted.isError, textOf(deleted)).toBeFalsy();
     const id = helpCenterId;
     helpCenterId = undefined;

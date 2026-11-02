@@ -73,6 +73,11 @@ describe.skipIf(!liveProfile() || !writesAllowed())("help center against local L
     expect(firstListed?.sort_order).toBe(1);
     expect(collections.find((c) => c.id === second.id)?.sort_order).toBe(0);
 
+    const published = (await run("collection_publish", { help_center_id: helpCenterId, id: [first.id, second.id], is_published: true })) as { ok: number };
+    expect(published.ok).toBe(2);
+    const afterPublish = (await run("collection_list", { help_center_id: helpCenterId })) as Record<string, unknown>[];
+    expect(afterPublish.filter((c) => c.id === first.id || c.id === second.id).map((c) => c.is_published)).toEqual([true, true]);
+
     const tree = (await run("tree", { id: helpCenterId })) as { tree: Record<string, unknown>[] };
     expect(tree.tree.map((c) => c.id).sort()).toEqual([first.id, second.id].sort());
 

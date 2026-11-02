@@ -5,7 +5,8 @@ import { getCurrentProfile } from "../../src/context.js";
 import { DOMAINS } from "../../src/domains/index.js";
 import { ConfirmationRequiredError, InputError } from "../../src/errors.js";
 import { runOperation } from "../../src/ops/run.js";
-import type { Operation } from "../../src/ops/define.js";
+import { z } from "zod";
+import { defineDomain, defineOperation, type Domain, type Operation } from "../../src/ops/define.js";
 import { neverPrompt } from "./helpers.js";
 
 interface Harness {
@@ -15,7 +16,7 @@ interface Harness {
   errors: unknown[];
 }
 
-function harness(overrides: Partial<CliDeps> = {}): Harness {
+function harness(overrides: Partial<CliDeps> = {}, domains: readonly Domain[] = DOMAINS): Harness {
   const h: Harness = { program: new Command(), runs: [], printed: [], errors: [] };
   h.program.exitOverride();
   const deps: CliDeps = {
@@ -34,7 +35,7 @@ function harness(overrides: Partial<CliDeps> = {}): Harness {
     },
     ...overrides,
   };
-  addDomainCommands(h.program, DOMAINS, deps);
+  addDomainCommands(h.program, domains, deps);
   return h;
 }
 
@@ -54,9 +55,9 @@ describe("addDomainCommands", () => {
 
   it("positional args fill their fields and --json is passed on", async () => {
     const h = harness();
-    await exec(h, "articles", "get", "42", "--collection-id", "3", "--json");
+    await exec(h, "articles", "get", "42", "--format", "html", "--json");
     expect(h.runs[0]?.op.name).toBe("get");
-    expect(h.runs[0]?.values).toEqual({ id: 42, collection_id: 3 });
+    expect(h.runs[0]?.values).toEqual({ id: 42, format: "html" });
     expect(h.printed[0]?.json).toBe(true);
   });
 
@@ -79,7 +80,7 @@ describe("addDomainCommands", () => {
         return {};
       },
     });
-    await exec(h, "articles", "get", "1", "--collection-id", "1", "--profile", "other");
+    await exec(h, "articles", "get", "1", "--profile", "other");
     expect(seen).toBeDefined();
     expect(seen).toMatch(/other/);
   });
@@ -116,14 +117,14 @@ describe("addDomainCommands", () => {
 
   it("non-TTY destructive op without --yes never runs and reports ConfirmationRequiredError", async () => {
     const h = harness();
-    await exec(h, "articles", "delete", "5", "--collection-id", "1");
+    await exec(h, "articles", "delete", "5");
     expect(h.runs).toHaveLength(0);
     expect(h.errors[0]).toBeInstanceOf(ConfirmationRequiredError);
   });
 
   it("--yes lets a destructive op run without a TTY", async () => {
     const h = harness();
-    await exec(h, "articles", "delete", "5", "--collection-id", "1", "--yes");
+    await exec(h, "articles", "delete", "5", "--yes");
     expect(h.runs).toHaveLength(1);
   });
 
@@ -199,7 +200,7 @@ describe("addDomainCommands", () => {
   it("shows the flag a user passes for booleans, with a matching description", () => {
     const h = harness();
     const create = flat(helpOf(h, "articles", "create"));
-    expect(create).toContain("--no-ai-enabled Do not let AI assistants answer from it once published. (ai-enabled is on by default)");
+    expect(create).toContain("--no-ai-enabled Do not let AI assistants use it once published. (ai-enabled is on by default)");
     expect(create).not.toContain("--ai-enabled ");
     const collection = flat(helpOf(h, "help-center", "collection", "create"));
     expect(collection).toContain("--is-published Publish the collection. New collections start unpublished. (off by default)");
@@ -221,11 +222,22 @@ describe("addDomainCommands", () => {
   });
 
   it("leaves hidden fields out of the help but accepts them", async () => {
-    const h = harness();
-    expect(helpOf(h, "articles", "get")).not.toContain("--collection-id");
-    expect(helpOf(h, "articles", "delete")).not.toContain("--collection-id");
-    await exec(h, "articles", "get", "42", "--collection-id", "3");
-    expect(h.runs[0]?.values).toEqual({ id: 42, collection_id: 3 });
+    const show = defineOperation({
+      name: "show",
+      summary: "Show a thing.",
+      method: "GET",
+      path: "/api/v1/things/{id}",
+      input: { id: z.number().int().describe("Id."), legacy: z.number().int().optional().describe("Old field.") },
+      query: ["legacy"],
+      positional: ["id"],
+      impact: "read",
+      cli: { hidden: ["legacy"] },
+    });
+    const things = defineDomain({ name: "things", tool: "libredesk_things", actionPrefix: "thing", toolset: "core", summary: "Things.", operations: [show] });
+    const h = harness({}, [things]);
+    expect(helpOf(h, "things", "show")).not.toContain("--legacy");
+    await exec(h, "things", "show", "42", "--legacy", "3");
+    expect(h.runs[0]?.values).toEqual({ id: 42, legacy: 3 });
   });
 
   it("lists one-line summaries in group listings, without effect lines", () => {
@@ -239,7 +251,7 @@ describe("addDomainCommands", () => {
   it("names sibling commands, not MCP actions, and states a default once", () => {
     const h = harness();
     const update = flat(helpOf(h, "articles", "update"));
-    expect(update).toContain("Publish with set-status");
+    expect(update).toContain("ldesk articles set-status");
     expect(update).not.toContain("set_status");
     expect(flat(helpOf(h, "articles"))).not.toContain("set_status");
     const get = flat(helpOf(h, "articles", "get"));

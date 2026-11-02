@@ -13,7 +13,7 @@ Every tool takes an optional "profile" to pick a stored LibreDesk login for that
 
 Knowledge model:
 - Snippets (libredesk_ai_knowledge) are plain-text answers shared by all AI assistants.
-- Articles reach assistants only when ai_enabled is on and the status is published.
+- An article reaches assistants only when it is published, ai_enabled is on, every collection above it is published and the help center is online. A change is re-indexed within about a minute.
 - FAQ suggestions mined from conversations become snippets when approved.
 - A conversation gets AI replies only when it is assigned to an assistant, usually by an automation rule.
 
@@ -21,4 +21,4 @@ Write article content as markdown. When get returned content_format "html", edit
 
 Use libredesk_lookup for ids of agents, teams, inboxes and the like. For anything else, find the endpoint with libredesk_request action catalog, then use action call.
 
-Actions marked CAUTION or DESTRUCTIVE change public pages, delete data or cost money: confirm them with the user first.`;
+The other tools create and edit drafts. Publishing, help center online state and FAQ learning are in libredesk_publish, deletes in libredesk_delete; both take lists of ids where noted. They change public pages, delete data or cost money: confirm them with the user first. Write actions return a short record; use get for the full one.`;

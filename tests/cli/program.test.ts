@@ -338,7 +338,7 @@ describe("catalog", () => {
     const one = printed[1]?.data as { tool: string }[];
     expect(one.length).toBeGreaterThan(0);
     expect(one.length).toBeLessThan(all.length);
-    expect(new Set(one.map((r) => r.tool))).toEqual(new Set(["libredesk_help_center"]));
+    expect(new Set(one.map((r) => r.tool))).toEqual(new Set(["libredesk_help_center", "libredesk_publish", "libredesk_delete"]));
   });
 
   it("fails for an unknown domain", async () => {

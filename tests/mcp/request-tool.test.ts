@@ -25,14 +25,15 @@ describe("libredesk_request", () => {
   it("catalog filtered by domain lists actions with fields", async () => {
     const res = await dispatchAction(requestActions(DOMAINS), { action: "catalog", domain: "help-center" });
     const entries = JSON.parse(text(res)) as { tool: string; action: string; fields: { name: string }[] }[];
-    expect(entries.every((e) => e.tool === "libredesk_help_center")).toBe(true);
+    expect(new Set(entries.map((e) => e.tool))).toEqual(new Set(["libredesk_help_center", "libredesk_publish", "libredesk_delete"]));
     expect(entries.find((e) => e.action === "get")?.fields.map((f) => f.name)).toEqual(["id"]);
+    expect(entries.find((e) => e.action === "help_center_delete")?.tool).toBe("libredesk_delete");
   });
 
   it("catalog without domain lists every operation without fields", async () => {
     const res = await dispatchAction(requestActions(DOMAINS), { action: "catalog" });
     const entries = JSON.parse(text(res)) as Record<string, unknown>[];
-    expect(new Set(entries.map((e) => e.tool))).toEqual(new Set(DOMAINS.map((d) => d.tool)));
+    expect(new Set(entries.map((e) => e.tool))).toEqual(new Set([...DOMAINS.map((d) => d.tool), "libredesk_publish", "libredesk_delete"]));
     expect(entries[0]).not.toHaveProperty("fields");
   });
 

@@ -66,7 +66,7 @@ describe.skipIf(!liveProfile() || !writesAllowed())("articles against local Libr
     expect(first.status).toBe("draft");
     expect(first.ai_enabled).toBe(true);
 
-    // collection_id 0 on get (LibreDesk ignores the collection segment)
+    // LibreDesk ignores the collection segment of the get path
     const fetched = (await art("get", { id: firstId })) as Record<string, unknown>;
     expect(fetched.note).toBeUndefined();
     expect(fetched.content_format).toBe("markdown");
@@ -111,9 +111,12 @@ describe.skipIf(!liveProfile() || !writesAllowed())("articles against local Libr
 
     await art("reorder", { collection_id: en2.id, order: { [firstId]: 5 } });
 
-    // collection_id 0 on delete
+    const bulk = (await art("set_status", { id: [firstId, deId], status: "draft" })) as { ok: number; failed: number };
+    expect(bulk).toMatchObject({ ok: 2, failed: 0 });
+
+    // LibreDesk ignores the collection segment of the delete path
     await art("delete", { id: deId });
-    await art("delete", { id: firstId, collection_id: en2.id });
+    await art("delete", { id: firstId });
     articleIds.length = 0;
 
     for (const id of collectionIds.splice(0)) await hc("collection_delete", { help_center_id: helpCenterId, id });

@@ -56,6 +56,11 @@ function presentSnippet(snippet: Record<string, unknown>): Record<string, unknow
   };
 }
 
+/** The short result of a snippet write, without the content just sent; anything but a record passes through. */
+function presentSnippetWrite(data: unknown): unknown {
+  return isRecord(data) ? pick(data, ["id", "title", "enabled", "updated_at"]) : data;
+}
+
 async function findSnippet(id: number, call: <T>(method: "GET", path: string) => Promise<T>): Promise<Record<string, unknown>> {
   const found = requireList(await call("GET", "/api/v1/ai/snippets"), "the snippet list").filter(isRecord).find((s) => s.id === id);
   if (found === undefined) {
@@ -125,6 +130,7 @@ const snippetCreate = defineOperation({
   impact: "write",
   permission: PERMISSION,
   undocumented: true,
+  present: presentSnippetWrite,
   cli: {
     notes: ["Read long content from a file with --content @file.txt."],
     examples: [
@@ -150,6 +156,7 @@ const snippetUpdate = defineOperation({
     const body = mergeForUpdate(current, input, SNIPPET_KEYS);
     return ctx.call("PUT", `/api/v1/ai/snippets/${input.id}`, { body });
   },
+  present: presentSnippetWrite,
   cli: {
     notes: ["Only the given fields change; the others keep their value."],
     examples: ["ldesk knowledge snippet update 3 --no-enabled", "ldesk knowledge snippet update 3 --content @refund-answer.txt"],
@@ -286,6 +293,8 @@ const learningSet = defineOperation({
     impact: "caution",
     effect: "Mines resolved conversations with your AI provider, at a cost per conversation.",
   },
+  // Turning learning on costs money, so over MCP the whole switch sits with the other gated actions.
+  mcpTool: "publish",
   permission: PERMISSION,
   undocumented: true,
   cli: {
@@ -298,6 +307,7 @@ const learningSet = defineOperation({
 export const aiKnowledgeDomain = defineDomain({
   name: "knowledge",
   tool: "libredesk_ai_knowledge",
+  actionPrefix: "knowledge",
   toolset: "knowledge",
   summary: "Manage the snippets AI assistants answer from, and review FAQ suggestions.",
   groups: {

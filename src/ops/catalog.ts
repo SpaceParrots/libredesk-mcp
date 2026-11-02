@@ -4,16 +4,16 @@
  */
 
 import type { HttpMethod } from "../http.js";
-import type { Domain, Impact } from "./define.js";
+import { riskActionName, riskToolOf, type Domain, type Impact } from "./define.js";
 import { operationFields, type FieldInfo } from "./fields.js";
 
 /** One operation as listed in the catalog. */
 export interface CatalogEntry {
   /** CLI command of the domain. */
   readonly domain: string;
-  /** MCP tool name of the domain. */
+  /** MCP tool that holds the action: the domain's, or `libredesk_publish` or `libredesk_delete`. */
   readonly tool: string;
-  /** Operation name, the MCP action. */
+  /** MCP action name in that tool. */
   readonly action: string;
   /** HTTP method of the default request. */
   readonly method: HttpMethod;
@@ -34,16 +34,20 @@ export function buildCatalog(domains: readonly Domain[], filter?: string): Catal
   return domains
     .filter((domain) => filter === undefined || domain.name === filter || domain.tool === filter)
     .flatMap((domain) =>
-      domain.operations.map((op) => ({
-        domain: domain.name,
-        tool: domain.tool,
-        action: op.name,
-        method: op.method,
-        path: op.path,
-        summary: op.summary,
-        impact: op.impact,
-        undocumented: op.undocumented ?? false,
-        fields: operationFields(op),
-      })),
+      domain.operations.map((op) => {
+        // An operation kept out of MCP is listed under its domain, as the CLI reaches it.
+        const risk = op.mcp === false ? undefined : riskToolOf(op);
+        return {
+          domain: domain.name,
+          tool: risk === undefined ? domain.tool : `libredesk_${risk}`,
+          action: risk === undefined ? op.name : riskActionName(domain, op),
+          method: op.method,
+          path: op.path,
+          summary: op.summary,
+          impact: op.impact,
+          undocumented: op.undocumented ?? false,
+          fields: operationFields(op),
+        };
+      }),
     );
 }

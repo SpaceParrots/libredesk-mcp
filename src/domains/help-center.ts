@@ -6,6 +6,7 @@
 
 import { z } from "zod";
 import { NotFoundError } from "../errors.js";
+import { forIds, idOrIds } from "../ops/bulk.js";
 import { defineDomain, defineOperation } from "../ops/define.js";
 import { isRecord } from "../guards.js";
 import { mergeForUpdate, requireList } from "../ops/merge.js";
@@ -90,10 +91,6 @@ const helpCenterSettings = {
 
 /** Optional settings shared by collection create and update. */
 const collectionSettings = {
-  slug: z
-    .string()
-    .optional()
-    .describe("Ignored."),
   parent_id: z
     .number()
     .int()
@@ -109,6 +106,23 @@ const collectionSettings = {
 const collectionName = z.string().describe("Collection name.");
 
 const isPublished = z.boolean().describe("Publish the collection. New collections start unpublished.");
+
+type Call = <T>(method: "GET", path: string) => Promise<T>;
+
+async function listCollections(helpCenterId: number, call: Call): Promise<Record<string, unknown>[]> {
+  return requireList(await call("GET", `/api/v1/help-centers/${helpCenterId}/collections`), "the collection list").filter(isRecord);
+}
+
+function findCollection(collections: readonly Record<string, unknown>[], helpCenterId: number, id: number): Record<string, unknown> {
+  const current = collections.find((c) => c.id === id);
+  if (current === undefined) {
+    throw new NotFoundError(`Collection ${id} not found in help center ${helpCenterId}`, {
+      status: 404,
+      hint: "List the collections with `ldesk help-center collection list <help-center-id>` (MCP action collection_list).",
+    });
+  }
+  return current;
+}
 
 const getHelpCenter = (id: number, call: <T>(method: "GET", path: string) => Promise<T>) =>
   call<Record<string, unknown>>("GET", `/api/v1/help-centers/${id}`);
@@ -335,7 +349,13 @@ const collectionCreate = defineOperation({
   },
   positional: ["help_center_id"],
   impact: "write",
-  escalate: { when: (values) => values.is_published === true, condition: "is_published is true", impact: "caution", effect: COLLECTION_PUBLIC_EFFECT },
+  escalate: {
+    when: (values) => values.is_published === true,
+    condition: "is_published is true",
+    impact: "caution",
+    effect: COLLECTION_PUBLIC_EFFECT,
+    fields: ["is_published"],
+  },
   permission: PERMISSION,
   undocumented: true,
   cli: {
@@ -362,18 +382,17 @@ const collectionUpdate = defineOperation({
   },
   positional: ["help_center_id", "id"],
   impact: "write",
-  escalate: { when: (values) => values.is_published !== undefined, condition: "is_published is given", impact: "caution", effect: COLLECTION_PUBLIC_EFFECT },
+  escalate: {
+    when: (values) => values.is_published !== undefined,
+    condition: "is_published is given",
+    impact: "caution",
+    effect: COLLECTION_PUBLIC_EFFECT,
+    fields: ["is_published"],
+  },
   permission: PERMISSION,
   undocumented: true,
   run: async (input, ctx) => {
-    const collections = requireList(await ctx.call("GET", `/api/v1/help-centers/${input.help_center_id}/collections`), "the collection list").filter(isRecord);
-    const current = collections.find((c) => c.id === input.id);
-    if (current === undefined) {
-      throw new NotFoundError(`Collection ${input.id} not found in help center ${input.help_center_id}`, {
-        status: 404,
-        hint: "List the collections with `ldesk help-center collection list <help-center-id>` (MCP action collection_list).",
-      });
-    }
+    const current = findCollection(await listCollections(input.help_center_id, ctx.call), input.help_center_id, input.id);
     const body = mergeForUpdate(current, input, COLLECTION_KEYS);
     return ctx.call("PUT", `/api/v1/help-centers/${input.help_center_id}/collections/${input.id}`, { body });
   },
@@ -384,6 +403,43 @@ const collectionUpdate = defineOperation({
       "ldesk help-center collection update 2 5 --parent-id null",
       "ldesk help-center collection update 2 5 --no-is-published --yes",
     ],
+  },
+});
+
+const collectionPublish = defineOperation({
+  name: "collection_publish",
+  group: "collection",
+  summary: "Publish or unpublish collections.",
+  method: "PUT",
+  path: "/api/v1/help-centers/{help_center_id}/collections/{id}",
+  input: {
+    help_center_id: helpCenterId,
+    id: idOrIds("Collection id or list of ids."),
+    is_published: z.boolean().describe("true publishes, false unpublishes."),
+  },
+  positional: ["help_center_id", "id"],
+  impact: "caution",
+  effect: COLLECTION_PUBLIC_EFFECT,
+  permission: PERMISSION,
+  undocumented: true,
+  run: async (input, ctx) => {
+    const collections = await listCollections(input.help_center_id, ctx.call);
+    return forIds(input.id, async (id) => {
+      const body = mergeForUpdate(findCollection(collections, input.help_center_id, id), { is_published: input.is_published }, COLLECTION_KEYS);
+      return presentCollection((await ctx.call("PUT", `/api/v1/help-centers/${input.help_center_id}/collections/${id}`, { body })) ?? {});
+    });
+  },
+  cli: {
+    notes: [
+      "Takes the help center id, then one collection id or a JSON list such as [5,6]. A list prints ok, failed and an entry per id.",
+      "An article reaches AI assistants only when every collection above it is published too.",
+    ],
+    examples: [
+      "ldesk help-center collection publish 2 5 --is-published --yes",
+      "ldesk help-center collection publish 2 '[5,6,7]' --is-published --yes",
+      "ldesk help-center collection publish 2 5 --no-is-published --yes",
+    ],
+    flags: { is_published: { on: "Publish the collections.", off: "Unpublish the collections." } },
   },
 });
 
@@ -399,8 +455,10 @@ const collectionToggle = defineOperation({
   effect: COLLECTION_PUBLIC_EFFECT,
   permission: PERMISSION,
   undocumented: true,
+  // Flipping without knowing the state misleads a model; MCP gets collection_publish instead.
+  mcp: false,
   cli: {
-    notes: ["Each call flips is_published. To set a known state, use `ldesk help-center collection update <help-center-id> <id> --is-published` or `--no-is-published`."],
+    notes: ["Each call flips is_published. To set a known state, use `ldesk help-center collection publish <help-center-id> <id> --is-published` or `--no-is-published`."],
     examples: ["ldesk help-center collection toggle 5 --yes"],
   },
 });
@@ -453,6 +511,7 @@ const collectionDelete = defineOperation({
 export const helpCenterDomain = defineDomain({
   name: "help-center",
   tool: "libredesk_help_center",
+  actionPrefix: "help_center",
   toolset: "knowledge",
   summary: "Manage help centers and their collections.",
   groups: { collection: "Manage the collections of a help center, the sections that hold its articles." },
@@ -469,6 +528,7 @@ export const helpCenterDomain = defineDomain({
     collectionList,
     collectionCreate,
     collectionUpdate,
+    collectionPublish,
     collectionToggle,
     collectionReorder,
     collectionDelete,

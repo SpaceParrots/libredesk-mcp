@@ -22,16 +22,27 @@ const remove = defineOperation({
   undocumented: true,
   mcp: false,
 });
+const toggle = defineOperation({
+  name: "toggle",
+  summary: "Take a help center offline",
+  method: "PUT",
+  path: "/api/v1/help-centers/{id}/toggle",
+  input: { id: z.number() },
+  impact: "caution",
+  effect: "Changes what the public sees.",
+});
 const helpCenters = defineDomain({
   name: "help-center",
   tool: "libredesk_help_center",
+  actionPrefix: "help_center",
   toolset: "knowledge",
   summary: "s",
-  operations: [list, remove],
+  operations: [list, remove, toggle],
 });
 const macros = defineDomain({
   name: "macro",
   tool: "libredesk_macro",
+  actionPrefix: "macro",
   toolset: "workflow",
   summary: "s",
   operations: [
@@ -40,11 +51,12 @@ const macros = defineDomain({
 });
 
 describe("buildCatalog", () => {
-  it("lists every operation of every domain, mcp:false included", () => {
+  it("lists every operation, risky ones under their shared tool and mcp:false ones under their domain", () => {
     const catalog = buildCatalog([helpCenters, macros]);
     expect(catalog.map((e) => `${e.tool}.${e.action}`)).toEqual([
       "libredesk_help_center.list",
       "libredesk_help_center.delete",
+      "libredesk_publish.help_center_toggle",
       "libredesk_macro.list",
     ]);
     expect(catalog[1]).toEqual({
@@ -63,7 +75,7 @@ describe("buildCatalog", () => {
 
   it("filters by domain name or tool name", () => {
     expect(buildCatalog([helpCenters, macros], "macro").map((e) => e.summary)).toEqual(["List macros"]);
-    expect(buildCatalog([helpCenters, macros], "libredesk_help_center")).toHaveLength(2);
+    expect(buildCatalog([helpCenters, macros], "libredesk_help_center")).toHaveLength(3);
     expect(buildCatalog([helpCenters, macros], "nope")).toEqual([]);
   });
 });

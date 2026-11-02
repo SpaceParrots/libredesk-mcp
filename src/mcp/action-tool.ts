@@ -42,6 +42,7 @@ export type ActionMap = Readonly<Record<string, ActionDef>>;
 export interface ActionToolAnnotations {
   readonly destructiveHint?: boolean;
   readonly readOnlyHint?: boolean;
+  readonly idempotentHint?: boolean;
 }
 
 /** Description of the `profile` field every tool accepts. */

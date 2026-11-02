@@ -27,7 +27,7 @@ const wipe = defineOperation({
   impact: "destructive",
   effect: "Deletes the thing.",
 });
-const demo = defineDomain({ name: "demo", tool: "libredesk_demo", toolset: "core", summary: "Demo things.", operations: [wipe] });
+const demo = defineDomain({ name: "demo", tool: "libredesk_demo", actionPrefix: "demo", toolset: "core", summary: "Demo things.", operations: [wipe] });
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -39,9 +39,7 @@ describe("commandLineFor", () => {
   });
 
   it("renders positionals and plain flags", () => {
-    expect(commandLineFor(articles, articleGet, { id: 42, collection_id: 3, format: "html" })).toBe(
-      "ldesk articles get 42 --collection-id 3 --format html",
-    );
+    expect(commandLineFor(articles, articleGet, { id: 42, format: "html" })).toBe("ldesk articles get 42 --format html");
   });
 
   it("escapes double quotes, single-quotes json, repeats arrays, writes null", () => {
@@ -140,10 +138,15 @@ describe("runInteractive", () => {
         return base.select<T>(o);
       },
     };
+    const getWithLegacy: Operation = {
+      ...articleGet,
+      input: { ...articleGet.input, legacy: z.string().optional().describe("Old field.") },
+      cli: { ...articleGet.cli, hidden: ["legacy"] },
+    };
     const { d } = setup(prompt);
-    await runInteractive(DOMAINS, d);
+    await runInteractive([{ ...articles, operations: [getWithLegacy] }], d);
     expect(offered).toContain("format");
-    expect(offered).not.toContain("collection_id");
+    expect(offered).not.toContain("legacy");
   });
 
   it("a No at the destructive confirmation runs nothing and asks what next", async () => {

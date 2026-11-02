@@ -1,15 +1,38 @@
 # MCP server
 
-`ldesk serve` runs the MCP server on stdio. It registers one tool per domain, each with an `action` field:
+`ldesk serve` runs the MCP server on stdio. It registers one tool per domain for reading and for writing drafts, two shared tools for the risky actions of every domain, and two helpers. Each takes an `action` field:
 
 - `libredesk_help_center`: help centers and collections.
 - `libredesk_articles`: articles.
-- `libredesk_ai_knowledge`: snippets, FAQ suggestions and the learning setting.
+- `libredesk_ai_knowledge`: snippets and FAQ suggestions.
 - `libredesk_lookup`: read-only lookups of ids.
+- `libredesk_publish`: what customers and AI assistants see, and paid switches: `article_set_status`, `collection_publish`, `help_center_toggle`, `learning_set`.
+- `libredesk_delete`: `help_center_delete`, `collection_delete`, `article_delete`, `snippet_delete`.
 - `libredesk_request`: `catalog` finds an endpoint, `call` sends a raw request.
 - `libredesk_status`: the profile in use and whether its server answers.
 
-Every tool takes an optional `profile`. Actions that change public pages, delete data or cost money are marked caution or destructive, and the server instructions tell the model to confirm them with you first.
+Every tool takes an optional `profile`. The domain tools cannot publish: `articles create` always makes a draft, and collections are published with `collection_publish`. `article_set_status` and `collection_publish` take one id or a list of up to 100, and return an ok or error entry per id.
+
+Writes return a short record (id, title, slug, status, `ai_enabled`, `updated_at`), not the content just sent; `get` returns the whole record.
+
+## Permissions
+
+Clients decide per tool name whether to ask before a call. Because publishing and deleting live in their own tools, you can allow the domain tools once and keep a confirmation on the rest. In Claude Code, `.claude/settings.json`:
+
+```json
+{
+  "permissions": {
+    "allow": ["mcp__libredesk__libredesk_help_center", "mcp__libredesk__libredesk_articles", "mcp__libredesk__libredesk_ai_knowledge", "mcp__libredesk__libredesk_lookup", "mcp__libredesk__libredesk_status"],
+    "ask": ["mcp__libredesk__libredesk_publish", "mcp__libredesk__libredesk_delete", "mcp__libredesk__libredesk_request"]
+  }
+}
+```
+
+The tools also carry the MCP hints `readOnlyHint`, `destructiveHint` and `idempotentHint`, and the server instructions tell the model to confirm publishing and deleting with you first.
+
+## What AI assistants can see
+
+An article reaches LibreDesk's AI assistants only when all of these hold: it is published, `ai_enabled` is on, every collection above it is published, and the help center is online. LibreDesk re-indexes an article in the background right after a change and checks all of them again every minute.
 
 ## Setup with a stored login
 

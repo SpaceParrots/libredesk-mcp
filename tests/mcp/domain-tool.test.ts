@@ -60,6 +60,7 @@ const hidden = defineOperation({
 const things = defineDomain({
   name: "things",
   tool: "libredesk_things",
+  actionPrefix: "thing",
   toolset: "knowledge",
   summary: "Manage things.",
   operations: [whoami, save, toggle, remove, hidden],
@@ -70,11 +71,33 @@ function text(result: { content: { text: string }[] }): string {
 }
 
 describe("domainActions", () => {
-  it("marks destructive and caution actions in summaries", () => {
+  it("leaves caution and destructive operations to the shared tools", () => {
     const actions = domainActions(things);
-    expect(actions.toggle?.summary).toBe("Toggle a thing. [undocumented] CAUTION: Takes it offline.");
-    expect(actions.delete?.summary).toBe("Delete a thing. DESTRUCTIVE: Deletes it.");
+    expect(Object.keys(actions)).toEqual(["whoami", "save"]);
     expect(actions.save?.summary).toBe("Save a thing.");
+  });
+
+  it("leaves a write operation with mcpTool to its shared tool", () => {
+    const paid = defineOperation({ ...save, name: "paid", mcpTool: "publish" });
+    expect(Object.keys(domainActions({ ...things, operations: [save, paid] }))).toEqual(["save"]);
+  });
+
+  it("leaves the escalating fields out of the action, so it cannot take the risky path", async () => {
+    const publish = defineOperation({
+      name: "publish",
+      summary: "Save a thing.",
+      method: "POST",
+      path: "/api/v1/things",
+      impact: "write",
+      input: { title: z.string().describe("Title."), status: z.enum(["draft", "published"]).default("draft").describe("Status.") },
+      escalate: { when: (values) => values.status === "published", condition: "status is published", impact: "caution", effect: "Goes public.", fields: ["status"] },
+    });
+    const actions = domainActions({ ...things, operations: [publish] });
+    expect(Object.keys(actions.publish?.shape ?? {})).toEqual(["title"]);
+    expect(actions.publish?.summary).toBe("Save a thing.");
+    const res = await dispatchAction(actions, { action: "publish", title: "T", status: "published" });
+    expect(res.isError).toBe(true);
+    expect(text(res)).toContain("status: not a field of this action");
   });
 
   it("notes an escalation in the summary, and never the CLI help", () => {
@@ -94,24 +117,30 @@ describe("domainActions", () => {
   });
 
   it("leaves out operations with mcp: false", () => {
-    expect(Object.keys(domainActions(things))).toEqual(["whoami", "save", "toggle", "delete"]);
+    expect(Object.keys(domainActions({ ...things, operations: [whoami, hidden] }))).toEqual(["whoami"]);
   });
 
   it("says undocumented once in the tool description when every action is", () => {
     const recorded: RecordedTool[] = [];
-    const undocumented: Domain = { ...things, operations: [toggle, { ...remove, undocumented: true }] };
+    const undocumented: Domain = { ...things, operations: [{ ...whoami, undocumented: true }, { ...save, undocumented: true }, toggle] };
     registerDomainTool(recordingServer(recorded), undocumented);
     expect(recorded[0]?.description).toContain(`Manage things. ${ALL_UNDOCUMENTED}`);
     expect(recorded[0]?.description).not.toContain("[undocumented]");
-    expect(recorded[0]?.description).toContain("- toggle(id): Toggle a thing. CAUTION: Takes it offline.");
+    expect(recorded[0]?.description).toContain("- save(title): Save a thing.");
   });
 });
 
 describe("registerDomainTool", () => {
-  it("sets destructiveHint when a domain has a destructive op", () => {
+  it("never sets destructiveHint, since deletes are in libredesk_delete", () => {
     const recorded: RecordedTool[] = [];
     registerDomainTool(recordingServer(recorded), things);
-    expect(recorded[0]?.annotations).toEqual({ readOnlyHint: false, destructiveHint: true });
+    expect(recorded[0]?.annotations).toEqual({ readOnlyHint: false, destructiveHint: false });
+  });
+
+  it("registers nothing when every operation went to a shared tool", () => {
+    const recorded: RecordedTool[] = [];
+    registerDomainTool(recordingServer(recorded), { ...things, operations: [toggle, remove] });
+    expect(recorded).toEqual([]);
   });
 
   it("sets readOnlyHint for a read-only domain", () => {
@@ -125,8 +154,8 @@ describe("registerDomainTool", () => {
     const recorded: RecordedTool[] = [];
     registerDomainTool(recordingServer(recorded), things);
     expect(recorded[0]?.name).toBe("libredesk_things");
-    expect(Object.keys(recorded[0]?.shape ?? {})).toEqual(["action", "title", "id", "profile"]);
-    expect(recorded[0]?.description).toContain("- delete(id): Delete a thing. DESTRUCTIVE: Deletes it.");
+    expect(Object.keys(recorded[0]?.shape ?? {})).toEqual(["action", "title", "profile"]);
+    expect(recorded[0]?.description).not.toContain("delete");
   });
 
   it("leads a merged field description with the actions that require the field", () => {
@@ -135,7 +164,7 @@ describe("registerDomainTool", () => {
     registerDomainTool(recordingServer(recorded), articles);
     const field = recorded[0]?.shape.collection_id as z.core.$ZodType;
     expect(z.globalRegistry.get(field)?.description).toBe(
-      "Collection id. For move: Target collection id. For get, delete: LibreDesk ignores it (lookup by id); leave it out. For list: Only this collection.",
+      "Collection id. For move: Target collection id. For list: Only this collection.",
     );
   });
 
@@ -144,9 +173,12 @@ describe("registerDomainTool", () => {
     const run = vi.fn().mockResolvedValue({});
     const actions = domainActions(articles, run);
     await dispatchAction(actions, { action: "get", id: 7 });
-    expect(run.mock.calls[0]?.[1]).toEqual({ id: 7, collection_id: 0, format: "markdown" });
+    expect(run.mock.calls[0]?.[1]).toEqual({ id: 7, format: "markdown" });
     await dispatchAction(actions, { action: "create", collection_id: 3, title: "T", content: "C" });
-    expect(run.mock.calls[1]?.[1]).toMatchObject({ collection_id: 3, title: "T", content: "C", status: "draft", ai_enabled: true });
+    expect(run.mock.calls[1]?.[1]).toEqual({ collection_id: 3, title: "T", content: "C", format: "markdown", ai_enabled: true });
+    const published = await dispatchAction(actions, { action: "create", collection_id: 3, title: "T", content: "C", status: "published" });
+    expect(published.isError).toBe(true);
+    expect(run).toHaveBeenCalledTimes(2);
   });
 
   it("the merged schema does not fill in another action's defaults", async () => {

@@ -37,7 +37,7 @@ ldesk profile remove staging
 
 ```bash
 ldesk help-center list|get|locales|tree|insights|create|update|toggle|delete
-ldesk help-center collection list|create|update|toggle|reorder|delete
+ldesk help-center collection list|create|update|publish|toggle|reorder|delete
 ldesk articles list|get|create|update|set-status|move|reorder|linkable|link-translation|unlink-translation|delete
 ldesk knowledge snippet list|get|create|update|import-url|delete
 ldesk knowledge faq list|approve|reject
@@ -68,10 +68,11 @@ ldesk help-center create --name "Docs" --slug docs --page-title "Help"
 ldesk help-center collection create 1 --name "Getting started" --is-published --yes
 ldesk help-center collection update 1 5 --parent-id null
 ldesk help-center tree 1
+ldesk help-center collection publish 1 '[5,6,7]' --is-published --yes
 ldesk help-center toggle 1 --yes
 ```
 
-Creating or updating a collection with `--is-published` or `--no-is-published` asks for confirmation, like `toggle`, because it changes what the public help center shows.
+Creating or updating a collection with `--is-published` or `--no-is-published` asks for confirmation, like `publish` and `toggle`, because it changes what the public help center shows. `collection publish` sets a known state for one collection or a JSON list of ids; `collection toggle` flips it. An article reaches AI assistants only when every collection above it is published.
 
 ## Articles
 
@@ -81,10 +82,13 @@ Article content is markdown. Pass it inline or read it from a file:
 ldesk articles create 3 --title "Reset your password" --content @article.md
 ldesk articles update 12 --title "How to reset your password"
 ldesk articles set-status 12 --status published --yes
+ldesk articles set-status '[12,13,14]' --status published --yes
 ldesk articles get 12
 ```
 
-`ldesk articles create <collection-id>` makes a draft with `ai_enabled` on. Publish it with `set-status`, or pass `--status published` to `create`; both ask for confirmation, because a published article is public and used by AI assistants.
+`ldesk articles create <collection-id>` makes a draft with `ai_enabled` on. Publish it with `set-status`, or pass `--status published` to `create`; both ask for confirmation, because a published article is public and used by AI assistants. `set-status` takes one id or a JSON list of ids, and with a list prints ok, failed and an entry per id. Writes print a short record (id, title, slug, status, `ai_enabled`); `get` prints the whole article.
+
+LibreDesk makes the slug from the title when the article is created and keeps it when the title changes later. It drops accents, so a German "ä" becomes "a", not "ae".
 
 LibreDesk stores article bodies as HTML, so `ldesk` converts markdown to HTML on write and back to markdown on read. For what markdown cannot express, such as tables, pass `--format html`: `create` and `update` then send the content as is, and `get --format html` returns the stored HTML. When `get` finds markup that would not survive the trip back to markdown, it returns the HTML and reports `content_format` as `html`. A literal `~` reads back as `&#126;`; `~~text~~` is strikethrough.
 

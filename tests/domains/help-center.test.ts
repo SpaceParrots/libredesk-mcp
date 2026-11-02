@@ -200,6 +200,26 @@ describe("help center domain", () => {
     });
   });
 
+  it("collection_publish reads the list once and sets is_published on each id, keeping the other fields", async () => {
+    const other = { ...collection, id: 9, name: "Other", is_published: false };
+    const { fetchImpl, calls } = fakeFetch((call) => (call.method === "GET" ? [other, collection] : { ...collection, is_published: false }));
+    const result = await runOperation(op("collection_publish"), { help_center_id: 1, id: [3, 9, 77], is_published: false }, { profile, fetchImpl });
+    expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+      "GET /api/v1/help-centers/1/collections",
+      "PUT /api/v1/help-centers/1/collections/3",
+      "PUT /api/v1/help-centers/1/collections/9",
+    ]);
+    expect(calls[1]?.body).toEqual({ slug: "start", parent_id: null, locale: "en", name: "Start", description: collection.description, icon: "rocket", sort_order: 2, is_published: false });
+    expect(calls[2]?.body).toMatchObject({ name: "Other", is_published: false });
+    expect(result).toMatchObject({ ok: 2, failed: 1, results: [{ id: 3, ok: true }, { id: 9, ok: true }, { id: 77, ok: false }] });
+  });
+
+  it("collection_publish with one id returns the short collection", async () => {
+    const { fetchImpl } = fakeFetch((call) => (call.method === "GET" ? [collection] : { ...collection, is_published: true, articles: [] }));
+    const result = await runOperation(op("collection_publish"), { help_center_id: 1, id: 3, is_published: true }, { profile, fetchImpl });
+    expect(result).toEqual({ id: 3, name: "Start", slug: "start", is_published: true, locale: "en", parent_id: null, sort_order: 2, ...("updated_at" in collection ? { updated_at: collection.updated_at } : {}) });
+  });
+
   it("collection_update on an unknown id throws NotFoundError and sends no PUT", async () => {
     const { fetchImpl, calls } = fakeFetch(() => [collection]);
     await expect(

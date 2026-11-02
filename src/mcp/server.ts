@@ -1,6 +1,7 @@
 /**
  * @module mcp/server
- * The MCP server on stdio: one action-dispatch tool per selected domain, plus `libredesk_request`
+ * The MCP server on stdio: one action-dispatch tool per selected domain, the shared
+ * `libredesk_publish` and `libredesk_delete` tools for their risky actions, plus `libredesk_request`
  * and `libredesk_status`. stdout carries the protocol, so diagnostics go to stderr only. Startup
  * never resolves a profile: without one, the tools still list and each call explains how to log in.
  */
@@ -15,6 +16,7 @@ import type { Domain, Toolset } from "../ops/define.js";
 import { registerDomainTool } from "./domain-tool.js";
 import { SERVER_INSTRUCTIONS } from "./instructions.js";
 import { registerRequestTool } from "./request-tool.js";
+import { registerRiskTools } from "./risk-tools.js";
 import { registerStatusTool } from "./status-tool.js";
 
 const require = createRequire(import.meta.url);
@@ -53,7 +55,9 @@ export function selectDomains(domains: readonly Domain[], toolsets: ReadonlySet<
 
 /** Register the tools selected by `LIBREDESK_TOOLSETS` in `env`. The catalog always covers every domain. */
 export function registerTools(server: McpServer, env: NodeJS.ProcessEnv = process.env): void {
-  for (const domain of selectDomains(DOMAINS, parseToolsets(env[ENV.TOOLSETS]))) registerDomainTool(server, domain);
+  const domains = selectDomains(DOMAINS, parseToolsets(env[ENV.TOOLSETS]));
+  for (const domain of domains) registerDomainTool(server, domain);
+  registerRiskTools(server, domains);
   registerRequestTool(server, DOMAINS);
   registerStatusTool(server);
 }

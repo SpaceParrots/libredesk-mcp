@@ -25,9 +25,12 @@ function fakeFetch(respond: (call: Call) => unknown = () => true) {
       body: init?.body === undefined ? undefined : JSON.parse(String(init.body)),
     };
     calls.push(call);
+    const data = respond(call);
+    // A response of the form { httpStatus, body } stands for an error response.
+    const failure = typeof data === "object" && data !== null && "httpStatus" in data ? (data as { httpStatus: number; body: unknown }) : undefined;
     return Promise.resolve(
-      new Response(JSON.stringify({ status: "success", data: respond(call) }), {
-        status: 200,
+      new Response(JSON.stringify(failure ? failure.body : { status: "success", data }), {
+        status: failure ? failure.httpStatus : 200,
         headers: { "Content-Type": "application/json" },
       }),
     );
@@ -84,7 +87,7 @@ describe("articles domain", () => {
     ["linkable", "GET", "/api/v1/help-centers/1/linkable-articles", { help_center_id: 1, exclude_locale: "de" }, undefined],
     ["link_translation", "PUT", "/api/v1/articles/4/link-translation", { id: 4, translation_of_id: 9 }, { translation_of_id: 9 }],
     ["unlink_translation", "PUT", "/api/v1/articles/4/unlink-translation", { id: 4 }, undefined],
-    ["delete", "DELETE", "/api/v1/collections/2/articles/4", { id: 4, collection_id: 2 }, undefined],
+    ["delete", "DELETE", "/api/v1/collections/0/articles/4", { id: 4 }, undefined],
   ];
 
   it.each(cases)("%s sends %s %s", async (name, method, path, input, body) => {
@@ -94,6 +97,45 @@ describe("articles domain", () => {
     expect(calls[0]?.method).toBe(method);
     expect(calls[0]?.path).toBe(path);
     expect(calls[0]?.body).toEqual(body);
+  });
+
+  it("set_status with a list sets each id and reports ok or the error per id", async () => {
+    const { fetchImpl, calls } = fakeFetch((call) =>
+      call.path.includes("/5/")
+        ? { httpStatus: 404, body: { status: "error", message: "Article not found" } }
+        : { id: Number(call.path.split("/")[4]), status: "published", content: "<p>long</p>", title: "T" },
+    );
+    const result = await runOperation(op("set_status"), { id: [4, 5, 6, 4], status: "published" }, { profile, fetchImpl });
+    expect(calls.map((c) => c.path)).toEqual(["/api/v1/articles/4/status", "/api/v1/articles/5/status", "/api/v1/articles/6/status"]);
+    expect(result).toEqual({
+      ok: 2,
+      failed: 1,
+      results: [
+        { id: 4, ok: true, result: { id: 4, title: "T", status: "published" } },
+        { id: 5, ok: false, error: expect.stringContaining("Article not found") as unknown },
+        { id: 6, ok: true, result: { id: 6, title: "T", status: "published" } },
+      ],
+    });
+  });
+
+  it("set_status rejects an empty list and more than 100 ids", async () => {
+    const { fetchImpl } = fakeFetch(() => ({}));
+    await expect(runOperation(op("set_status"), { id: [], status: "draft" }, { profile, fetchImpl })).rejects.toThrow(/id/);
+    const many = Array.from({ length: 101 }, (_, i) => i + 1);
+    await expect(runOperation(op("set_status"), { id: many, status: "draft" }, { profile, fetchImpl })).rejects.toThrow(/id/);
+  });
+
+  it.each(["create", "update", "set_status", "move"])("%s returns the short record without content", async (name) => {
+    const article = { id: 4, collection_id: 7, title: "T", slug: "t", locale: "en", status: "draft", ai_enabled: true, updated_at: "u", content: "<p>x</p>", meta_title: "" };
+    const { fetchImpl } = fakeFetch(() => article);
+    const inputs: Record<string, Record<string, unknown>> = {
+      create: { collection_id: 7, title: "T", content: "x" },
+      update: { id: 4, title: "T" },
+      set_status: { id: 4, status: "draft" },
+      move: { id: 4, collection_id: 7 },
+    };
+    const result = await runOperation(op(name), inputs[name], { profile, fetchImpl });
+    expect(result).toEqual({ id: 4, collection_id: 7, title: "T", slug: "t", locale: "en", status: "draft", ai_enabled: true, updated_at: "u" });
   });
 
   it("linkable sends exclude_locale as a query parameter", async () => {

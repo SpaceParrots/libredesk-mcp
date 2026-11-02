@@ -131,6 +131,7 @@ const customAttributes = defineOperation({
 export const lookupDomain = defineDomain({
   name: "lookup",
   tool: "libredesk_lookup",
+  actionPrefix: "lookup",
   toolset: "core",
   summary: "Look up ids of agents, teams, inboxes and other settings.",
   operations: [me, agents, teams, tags, inboxes, statuses, priorities, customAttributes],

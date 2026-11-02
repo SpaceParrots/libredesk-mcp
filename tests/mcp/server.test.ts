@@ -13,6 +13,8 @@ const PHASE_1_TOOLS = [
   "libredesk_articles",
   "libredesk_ai_knowledge",
   "libredesk_lookup",
+  "libredesk_publish",
+  "libredesk_delete",
   "libredesk_request",
   "libredesk_status",
 ];
@@ -64,7 +66,7 @@ describe("toolsets", () => {
 describe("instructions", () => {
   it("fit in 25 lines and name the tools they point to", () => {
     expect(SERVER_INSTRUCTIONS.split("\n").length).toBeLessThanOrEqual(25);
-    for (const name of ["libredesk_status", "libredesk_lookup", "libredesk_request", "ai_enabled", "published", "markdown"]) {
+    for (const name of ["libredesk_status", "libredesk_lookup", "libredesk_request", "libredesk_publish", "libredesk_delete", "ai_enabled", "published", "markdown"]) {
       expect(SERVER_INSTRUCTIONS).toContain(name);
     }
   });
@@ -121,7 +123,8 @@ describe("MCP server over a transport", () => {
       const { tools } = await client.listTools();
       expect(tools.map((t) => t.name)).toEqual(PHASE_1_TOOLS);
       const articles = tools.find((t) => t.name === "libredesk_articles");
-      expect(articles?.annotations).toMatchObject({ destructiveHint: true, readOnlyHint: false });
+      expect(articles?.annotations).toMatchObject({ destructiveHint: false, readOnlyHint: false });
+      expect(tools.find((t) => t.name === "libredesk_delete")?.annotations).toMatchObject({ destructiveHint: true });
       expect(articles?.inputSchema.required).toEqual(["action"]);
 
       const res = await client.callTool({ name: "libredesk_help_center", arguments: { action: "list" } });
