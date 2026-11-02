@@ -15,8 +15,8 @@ function measure(recorded: readonly RecordedTool[]): number {
   }, 0);
 }
 
-// Measured 2026-11-02: default toolsets 8502 chars with libredesk_publish and libredesk_delete split out
-// (8288 before the split, 14515 before trimming descriptions). CLI-only help (`Operation.cli`) is not part of the tool surface.
+// Measured 2026-11-02: default toolsets 8834 chars with articles sync and visibility (8502 before them,
+// 8288 before libredesk_publish and libredesk_delete were split out, 14515 before trimming descriptions). CLI-only help (`Operation.cli`) is not part of the tool surface.
 // Ceiling: measured * 1.1 rounded up to the next 500, capped at the hard bound.
 const DEFAULT_CEILING = 9_000;
 const HARD_BOUND = 9_000;

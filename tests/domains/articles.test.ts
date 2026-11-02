@@ -138,6 +138,45 @@ describe("articles domain", () => {
     expect(result).toEqual({ id: 4, collection_id: 7, title: "T", slug: "t", locale: "en", status: "draft", ai_enabled: true, updated_at: "u" });
   });
 
+  it("visibility applies LibreDesk's indexing rule and names every reason an article is hidden", async () => {
+    const tree = {
+      help_center: { id: 1, is_active: true },
+      tree: [
+        {
+          name: "Top",
+          is_published: true,
+          articles: [
+            { id: 1, title: "Live", status: "published", ai_enabled: true },
+            { id: 2, title: "Draft", status: "draft", ai_enabled: true },
+            { id: 3, title: "No AI", status: "published", ai_enabled: false },
+          ],
+          children: [{ name: "Hidden", is_published: false, articles: [], children: [{ name: "Deep", is_published: true, articles: [{ id: 4, title: "Under hidden", status: "published", ai_enabled: true }], children: [] }] }],
+        },
+      ],
+    };
+    const { fetchImpl, calls } = fakeFetch(() => tree);
+    const result = await runOperation(op("visibility"), { help_center_id: 1, locale: "de" }, { profile, fetchImpl });
+    expect(calls[0]?.path).toBe("/api/v1/help-centers/1/tree");
+    expect(calls[0]?.search).toBe("?locale=de");
+    expect(result).toEqual({
+      visible: 1,
+      hidden: 3,
+      visible_ids: [1],
+      hidden_articles: [
+        { id: 2, title: "Draft", collection: "Top", reasons: ["status is draft"] },
+        { id: 3, title: "No AI", collection: "Top", reasons: ["ai_enabled is off"] },
+        { id: 4, title: "Under hidden", collection: "Deep", reasons: ['collection "Hidden" is unpublished'] },
+      ],
+    });
+  });
+
+  it("visibility reports an offline help center on every article", async () => {
+    const tree = { help_center: { id: 1, is_active: false }, tree: [{ name: "Top", is_published: true, articles: [{ id: 1, title: "A", status: "published", ai_enabled: true }], children: [] }] };
+    const { fetchImpl } = fakeFetch(() => tree);
+    const result = (await runOperation(op("visibility"), { help_center_id: 1 }, { profile, fetchImpl })) as { hidden_articles: { reasons: string[] }[] };
+    expect(result.hidden_articles[0]?.reasons).toEqual(["help center is offline"]);
+  });
+
   it("linkable sends exclude_locale as a query parameter", async () => {
     const { fetchImpl, calls } = fakeFetch(() => []);
     await runOperation(op("linkable"), { help_center_id: 1, exclude_locale: "de" }, { profile, fetchImpl });

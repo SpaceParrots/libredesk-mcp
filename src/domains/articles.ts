@@ -7,34 +7,13 @@
 
 import { z } from "zod";
 import { readArticleContent, toArticleHtml, type ContentFormat } from "../content/markdown.js";
-import { isRecord } from "../guards.js";
 import { forIds, idOrIds } from "../ops/bulk.js";
 import { defineDomain, defineOperation } from "../ops/define.js";
 import { mergeForUpdate } from "../ops/merge.js";
+import { syncArticles } from "../services/article-sync.js";
+import { ARTICLE_KEYS, NO_COLLECTION, presentArticleWrite } from "./article-record.js";
 
 const PERMISSION = "help_center:manage";
-
-/**
- * Keys of LibreDesk's `ArticleRequest` that an update writes, except `collection_id` (moving is
- * `move`). `status` and `author_id` are not caller inputs but must be sent back: the update SQL
- * writes both, an empty status becomes `draft` and a missing author is cleared.
- */
-const ARTICLE_KEYS = [
-  "slug",
-  "locale",
-  "title",
-  "content",
-  "excerpt",
-  "meta_title",
-  "meta_description",
-  "meta_image_url",
-  "sort_order",
-  "status",
-  "ai_enabled",
-  "author_id",
-] as const;
-
-const NO_COLLECTION = 0;
 
 const articleId = z.number().int().positive().describe("Article id.");
 const collectionId = z.number().int().positive().describe("Collection id.");
@@ -75,14 +54,6 @@ function pick(source: Record<string, unknown>, keys: readonly string[]): Record<
   return Object.fromEntries(keys.filter((key) => key in source).map((key) => [key, source[key]]));
 }
 
-/** Fields a write returns: enough to confirm it and chain the next call, without the content just sent. */
-const WRITE_RESULT_KEYS = ["id", "collection_id", "title", "slug", "locale", "status", "ai_enabled", "updated_at"] as const;
-
-/** The short result of an article write; `get` returns the whole article. Anything but a record passes through. */
-export function presentArticleWrite(data: unknown): unknown {
-  return isRecord(data) ? pick(data, WRITE_RESULT_KEYS) : data;
-}
-
 function presentArticle(data: unknown, format: ContentFormat): Record<string, unknown> {
   const article = (data ?? {}) as Record<string, unknown>;
   const html = typeof article.content === "string" ? article.content : "";
@@ -108,6 +79,72 @@ function flattenTree(nodes: unknown, collectionFilter: number | undefined): Reco
     return [...own, ...flattenTree(children, collectionFilter)];
   });
 }
+
+interface VisibilityNode {
+  readonly name?: unknown;
+  readonly is_published?: unknown;
+  readonly articles?: unknown;
+  readonly children?: unknown;
+}
+
+/** Why an article is hidden from the AI assistants, or no reasons when they can use it. */
+function hiddenReasons(article: Record<string, unknown>, unpublished: readonly string[], helpCenterActive: boolean): string[] {
+  return [
+    ...(article.status === "published" ? [] : [`status is ${String(article.status)}`]),
+    ...(article.ai_enabled === true ? [] : ["ai_enabled is off"]),
+    ...unpublished.map((name) => `collection "${name}" is unpublished`),
+    ...(helpCenterActive ? [] : ["help center is offline"]),
+  ];
+}
+
+/**
+ * Walk the tree with the names of the unpublished collections on the way down, applying
+ * LibreDesk's indexing rule (internal/ai/queries.sql, get-embeddable-help-articles).
+ */
+function visibilityOf(nodes: unknown, unpublishedAbove: readonly string[], helpCenterActive: boolean): Record<string, unknown>[] {
+  return asRecords(nodes).flatMap((node) => {
+    const { name, is_published: isPublished, articles, children } = node as VisibilityNode;
+    const unpublished = isPublished === true ? unpublishedAbove : [...unpublishedAbove, String(name)];
+    const own = asRecords(articles).map((a) => ({
+      id: a.id,
+      title: a.title,
+      collection: name,
+      reasons: hiddenReasons(a, unpublished, helpCenterActive),
+    }));
+    return [...own, ...visibilityOf(children, unpublished, helpCenterActive)];
+  });
+}
+
+const visibility = defineOperation({
+  name: "visibility",
+  summary: "Which articles AI assistants can use, and why the others are hidden.",
+  method: "GET",
+  path: "/api/v1/help-centers/{help_center_id}/tree",
+  input: { help_center_id: helpCenterId, locale: z.string().optional().describe("Only this locale; omit for all.") },
+  query: ["locale"],
+  positional: ["help_center_id"],
+  impact: "read",
+  permission: PERMISSION,
+  undocumented: true,
+  present: (data) => {
+    const response = (data ?? {}) as { help_center?: Record<string, unknown>; tree?: unknown };
+    const all = visibilityOf(response.tree, [], response.help_center?.is_active === true);
+    const hidden = all.filter((a) => (a.reasons as string[]).length > 0);
+    return {
+      visible: all.length - hidden.length,
+      hidden: hidden.length,
+      visible_ids: all.filter((a) => (a.reasons as string[]).length === 0).map((a) => a.id),
+      hidden_articles: hidden,
+    };
+  },
+  cli: {
+    notes: [
+      "An article reaches the AI assistants only when it is published, ai_enabled is on, every collection above it is published and the help center is online. Prints the counts, the ids of the visible articles, and each hidden article with its reasons.",
+      "LibreDesk re-indexes an article in the background right after a change, and checks every article again once a minute.",
+    ],
+    examples: ["ldesk articles visibility 2", "ldesk articles visibility 2 --locale de --json"],
+  },
+});
 
 const list = defineOperation({
   name: "list",
@@ -236,6 +273,32 @@ const update = defineOperation({
       "The slug stays as it is, even when the title changes.",
     ],
     examples: ['ldesk articles update 42 --title "Refunds"', "ldesk articles update 42 --content @refunds.md", "ldesk articles update 42 --no-ai-enabled"],
+  },
+});
+
+const sync = defineOperation({
+  name: "sync",
+  summary: "Create or update draft articles from local .md files with frontmatter; writes new ids back. Never publishes.",
+  // A composite: it creates, reads, updates and moves articles through several endpoints.
+  method: "PUT",
+  path: "/api/v1/articles",
+  input: {
+    path: z.string().describe("A .md file, or a folder of them, on this machine."),
+    collection_id: collectionId.optional(),
+    dry_run: z.boolean().default(false).describe("Only report what would change."),
+  },
+  positional: ["path"],
+  impact: "write",
+  permission: PERMISSION,
+  undocumented: true,
+  run: (input, ctx) => syncArticles({ path: input.path, collectionId: input.collection_id, dryRun: input.dry_run }, ctx),
+  cli: {
+    notes: [
+      "Each file holds one article. Frontmatter between --- lines sets the fields, one `key: value` per line: title, collection_id, excerpt, sort_order, ai_enabled, locale, meta_title, meta_description, meta_image_url, format (markdown or html), id. Without title, a leading `# heading` is the title. --collection-id is the collection for files without collection_id. A folder syncs its .md files, not its subfolders.",
+      "A file without id creates a draft article, and sync writes `id: <new id>` into the file's frontmatter, so the next run updates that article. With id, the article is updated only when a field differs; a different collection_id moves it. Frontmatter keys you leave out keep their value on the server.",
+      "Sync never publishes or unpublishes: publish afterwards with `ldesk articles set-status '[ids]' --status published --yes`. Prints counts and one line per file; --dry-run reports without writing to the server or the files.",
+    ],
+    examples: ["ldesk articles sync ./help --collection-id 7 --dry-run", "ldesk articles sync ./help --collection-id 7", "ldesk articles sync ./help/refunds.md"],
   },
 });
 
@@ -369,5 +432,5 @@ export const articlesDomain = defineDomain({
   actionPrefix: "article",
   toolset: "knowledge",
   summary: "Manage knowledge base articles, written and read as markdown.",
-  operations: [list, get, create, update, setStatus, move, reorder, linkable, linkTranslation, unlinkTranslation, remove],
+  operations: [list, visibility, get, create, update, sync, setStatus, move, reorder, linkable, linkTranslation, unlinkTranslation, remove],
 });

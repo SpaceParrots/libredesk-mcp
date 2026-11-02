@@ -47,7 +47,7 @@ ldesk profile remove staging
 ```bash
 ldesk help-center list|get|locales|tree|insights|create|update|toggle|delete
 ldesk help-center collection list|create|update|publish|toggle|reorder|delete
-ldesk articles list|get|create|update|set-status|move|reorder|linkable|link-translation|unlink-translation|delete
+ldesk articles list|visibility|get|create|update|sync|set-status|move|reorder|linkable|link-translation|unlink-translation|delete
 ldesk knowledge snippet list|get|create|update|import-url|delete
 ldesk knowledge faq list|approve|reject
 ldesk knowledge learning get|set
@@ -102,6 +102,35 @@ LibreDesk makes the slug from the title when the article is created and keeps it
 LibreDesk stores article bodies as HTML, so `ldesk` converts markdown to HTML on write and back to markdown on read. For what markdown cannot express, such as tables, pass `--format html`: `create` and `update` then send the content as is, and `get --format html` returns the stored HTML. When `get` finds markup that would not survive the trip back to markdown, it returns the HTML and reports `content_format` as `html`. A literal `~` reads back as `&#126;`; `~~text~~` is strikethrough.
 
 Updates only need the id and the fields that change. LibreDesk replaces the whole record on every update, so `ldesk` reads the current record first and sends every field back with your changes applied. A title change does not reset `ai_enabled`, `status`, `content`, `excerpt` or the collection.
+
+## Syncing a folder of articles
+
+`ldesk articles sync <path>` creates or updates articles from a `.md` file or from the `.md` files of a folder (not its subfolders). Each file is one article, with its settings in frontmatter:
+
+```markdown
+---
+collection_id: 7
+excerpt: How refunds work
+sort_order: 2
+---
+# Refunds
+
+Orders can be returned within 30 days.
+```
+
+The keys are `title`, `collection_id`, `excerpt`, `sort_order`, `ai_enabled`, `locale`, `meta_title`, `meta_description`, `meta_image_url`, `format` (`markdown` or `html`) and `id`, one `key: value` per line. Without `title`, a leading `# heading` is the title. `--collection-id` sets the collection for files without `collection_id`.
+
+```bash
+ldesk articles sync ./help --collection-id 7 --dry-run   # report only
+ldesk articles sync ./help --collection-id 7
+ldesk articles set-status '[41,42,43]' --status published --yes
+```
+
+A file without `id` becomes a new draft, and sync writes `id: <new id>` into its frontmatter, so the next run updates the same article instead of making another. A file with `id` is written only when a field differs, so running sync again sends just the changes; a different `collection_id` moves the article. Keys you leave out keep their value on the server. Sync never publishes or unpublishes, and a `status` key is an error: publish afterwards with `set-status`. It prints the counts and one line per file, and a failing file does not stop the others.
+
+## What AI assistants can see
+
+`ldesk articles visibility <help-center-id>` lists which articles LibreDesk's AI assistants can use, and for each hidden one why: it is a draft, `ai_enabled` is off, a collection above it is unpublished, or the help center is offline. All four must hold for an article to be used. LibreDesk re-indexes an article in the background right after a change and checks every article again once a minute.
 
 ## Snippets and FAQ suggestions
 

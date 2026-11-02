@@ -36,7 +36,8 @@ Every endpoint is declared once as an `Operation` (`src/ops/define.ts`, built wi
 - `src/commands/*` are the hand-written commands: login, profile, status, doctor, request, mcp. `doctor` launches the client's configured server entries through `src/services/mcp-probe.ts`, whose spawn and stop are injected in tests, so no unit test starts a process.
 - `src/services/*` hold the logic behind those commands, kept free of printing.
 - `src/mcp/server.ts` registers the tools, reads `LIBREDESK_TOOLSETS`, and starts stdio. `src/mcp/instructions.ts` is the text clients put into the model's system prompt.
-- `src/content/markdown.ts` converts article content between markdown and the HTML LibreDesk stores.
+- `src/content/markdown.ts` converts article content between markdown and the HTML LibreDesk stores. `src/content/frontmatter.ts` reads flat frontmatter and sets one field without touching the rest of the file.
+- `src/services/article-sync.ts` is `articles sync`: local `.md` files to articles, the new id written back into the file, unchanged articles skipped by comparing canonical markdown, status never touched.
 - `src/mask.ts` masks secrets; every printed or returned value goes through it.
 
 `src/index.ts` runs interactive mode with no arguments on a terminal, the MCP server with no arguments otherwise, and the Commander program for anything else.

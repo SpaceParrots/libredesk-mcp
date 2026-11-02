@@ -15,6 +15,8 @@ Every tool takes an optional `profile`. The domain tools cannot publish: `articl
 
 Writes return a short record (id, title, slug, status, `ai_enabled`, `updated_at`), not the content just sent; `get` returns the whole record.
 
+`libredesk_articles` action `sync` takes a path to a `.md` file or folder on the machine the server runs on, and creates or updates the articles from it, so article text never has to pass through the model. The file format is in [the CLI reference](cli.md#syncing-a-folder-of-articles). Action `visibility` lists which articles the AI assistants can use and why the others are hidden.
+
 ## Permissions
 
 Clients decide per tool name whether to ask before a call. Because publishing and deleting live in their own tools, you can allow the domain tools once and keep a confirmation on the rest. In Claude Code, `.claude/settings.json`:

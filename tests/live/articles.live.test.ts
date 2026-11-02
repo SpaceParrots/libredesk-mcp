@@ -4,6 +4,9 @@
  * locales and one collection per locale, and removes everything again.
  */
 
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { articlesDomain } from "../../src/domains/articles.js";
 import { helpCenterDomain } from "../../src/domains/help-center.js";
@@ -110,6 +113,28 @@ describe.skipIf(!liveProfile() || !writesAllowed())("articles against local Libr
     expect(moved.map((a) => a.id)).toEqual([firstId]);
 
     await art("reorder", { collection_id: en2.id, order: { [firstId]: 5 } });
+
+    const dir = await mkdtemp(join(tmpdir(), "ldesk-sync-"));
+    try {
+      const file = ["---", "excerpt: From a file", "---", "# Synced", "", "Write to support@example.com or see [docs](https://example.com).", "", "* one", "* two", ""];
+      await writeFile(join(dir, "synced.md"), file.join("\n"));
+      const created = (await art("sync", { path: dir, collection_id: en2.id })) as { created: number; files: { id: number }[] };
+      expect(created.created).toBe(1);
+      const syncedId = created.files[0]?.id as number;
+      articleIds.push(syncedId);
+      expect(await readFile(join(dir, "synced.md"), "utf8")).toContain(`id: ${syncedId}`);
+      // The server's sanitizer must not make the next run see a change.
+      expect(await art("sync", { path: dir })).toMatchObject({ unchanged: 1, updated: 0, failed: 0 });
+
+      const visible = (await art("visibility", { help_center_id: helpCenterId })) as { hidden_articles: { id: number; reasons: string[] }[] };
+      expect(visible.hidden_articles.find((a) => a.id === syncedId)?.reasons).toEqual(
+        expect.arrayContaining(["status is draft", 'collection "English two" is unpublished']) as unknown,
+      );
+      await art("delete", { id: syncedId });
+      articleIds.splice(articleIds.indexOf(syncedId), 1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
 
     const bulk = (await art("set_status", { id: [firstId, deId], status: "draft" })) as { ok: number; failed: number };
     expect(bulk).toMatchObject({ ok: 2, failed: 0 });
