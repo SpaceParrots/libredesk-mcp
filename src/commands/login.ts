@@ -5,6 +5,7 @@
 
 import type { Command } from "commander";
 import type { CliDeps } from "../cli/domain-commands.js";
+import { confirmationLine, YES_DESCRIPTION } from "../cli/help.js";
 import { handleCliError, printSuccess } from "../cli/output.js";
 import { assertValidProfileName, loadConfig, normalizeUrl, saveConfig, upsertProfile } from "../config.js";
 import { CancelledError, ConfirmationRequiredError, InputError } from "../errors.js";
@@ -55,12 +56,13 @@ async function collectCredentials(options: LoginOptions, deps: CliDeps): Promise
 export function registerLogin(program: Command, deps: CliDeps): void {
   program
     .command("login")
-    .description("Verify credentials and save them as a profile")
+    .summary("Verify credentials and save them as a profile")
+    .description(`Verify credentials and save them as a profile.\n\n${confirmationLine("Overwrites an existing profile of the same name")}`)
     .option("--url <url>", "LibreDesk base URL")
     .option("--api-key <key>", "API key of the agent")
     .option("--api-secret <secret>", "API secret of the agent")
     .option("--name <name>", "profile name (default: the host name with dots replaced by dashes)")
-    .option("--yes", "overwrite an existing profile without asking")
+    .option("--yes", YES_DESCRIPTION)
     .action(async (options: LoginOptions) => {
       try {
         const credentials = await collectCredentials(options, deps);

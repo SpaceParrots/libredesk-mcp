@@ -4,50 +4,7 @@ import { createProgram } from "../../src/cli/program.js";
 import { DOMAINS } from "../../src/domains/index.js";
 import type { Operation } from "../../src/ops/define.js";
 import { operationFields, type FieldInfo } from "../../src/ops/fields.js";
-import { neverPrompt } from "./helpers.js";
-
-/** Split a command line the way a POSIX shell would for the quoting `commandLineFor` produces. */
-function shellSplit(line: string): string[] {
-  const tokens: string[] = [];
-  let current: string | undefined;
-  let i = 0;
-  const push = (text: string) => {
-    current = (current ?? "") + text;
-  };
-  while (i < line.length) {
-    const ch = line.charAt(i);
-    if (ch === " ") {
-      if (current !== undefined) tokens.push(current);
-      current = undefined;
-      i += 1;
-    } else if (ch === '"') {
-      i += 1;
-      current ??= "";
-      while (line.charAt(i) !== '"') {
-        if (line.charAt(i) === "\\") i += 1;
-        push(line.charAt(i));
-        i += 1;
-      }
-      i += 1;
-    } else if (ch === "'") {
-      i += 1;
-      current ??= "";
-      while (line.charAt(i) !== "'") {
-        push(line.charAt(i));
-        i += 1;
-      }
-      i += 1;
-    } else if (ch === "\\") {
-      push(line.charAt(i + 1));
-      i += 2;
-    } else {
-      push(ch);
-      i += 1;
-    }
-  }
-  if (current !== undefined) tokens.push(current);
-  return tokens;
-}
+import { neverPrompt, shellSplit } from "./helpers.js";
 
 function scalar(info: FieldInfo, variant: "tricky" | "plain"): unknown {
   switch (info.kind) {

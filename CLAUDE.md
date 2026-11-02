@@ -42,11 +42,13 @@ Every endpoint is declared once as an `Operation` (`src/ops/define.ts`, built wi
 ## Adding an operation
 
 1. Add a `defineOperation` to the domain file, with `name` (snake_case, unique per domain), `summary`, `method`, `path`, `input` (zod shape, `.describe()` on every field), `impact` and, for `caution` or `destructive`, an `effect`. Add `permission` when you know the role permission the endpoint needs.
-2. Put it in the domain's `operations` array.
-3. Add unit tests in `tests/domains/` and, when 2.9.2 has the endpoint, a live test in `tests/live/`.
-4. Run `npm run verify`, and the token budget test with it.
+2. Add `cli` help, which only `--help` shows and the MCP tools never carry (so it costs no model context): `examples` (one to three full `ldesk ...` command lines that run without a terminal, with `--yes` where the command asks and `@file` for long content), `notes` for what the summary does not say (what a list prints, where an id comes from, what the server does on its own), `hidden` for optional fields the help should not list (they stay accepted as flags), and `flags` when a boolean's `--x` or `--no-x` text would read wrong from the description. `tests/cli/examples.test.ts` runs every example.
+3. When only some inputs make the operation risky, add `escalate` (`when`, `condition`, `impact`, `effect`) instead of raising `impact`: `articles create` asks like `set_status` only when `status` is `published`. The CLI and interactive mode confirm it, the MCP action summary says `CAUTION when <condition>: <effect>`.
+4. Put it in the domain's `operations` array. An operation with a `group` needs a description of that group in the domain's `groups`.
+5. Add unit tests in `tests/domains/` and, when 2.9.2 has the endpoint, a live test in `tests/live/`.
+6. Run `npm run verify`, and the token budget test with it.
 
-A new domain is a file in `src/domains/` exporting a `Domain` (`name` kebab-case, `tool` as `libredesk_<domain>`, `toolset`, `summary`, `operations`) plus an entry in `DOMAINS`. The CLI command, the MCP tool and the catalog follow with no other change.
+A new domain is a file in `src/domains/` exporting a `Domain` (`name` kebab-case, `tool` as `libredesk_<domain>`, `toolset`, `summary`, `groups` when it has grouped operations, `operations`) plus an entry in `DOMAINS`. The CLI command, the MCP tool and the catalog follow with no other change.
 
 ## Rules learned in this phase
 
@@ -56,7 +58,8 @@ A new domain is a file in `src/domains/` exporting a `Domain` (`name` kebab-case
 - Validation is strict: unknown keys are rejected in `run.ts` and in the MCP action tool, with an error naming them. Do not loosen it to be forgiving.
 - The MCP tool definitions are always on in the model's context, so `tests/mcp/token-budget.test.ts` bounds them: measured size plus about 10 percent, with a hard bound of `9_000` characters for the default toolsets. Keep descriptions short. Do not raise the bound to make a test pass; shorten the descriptions or move text into the response.
 - In the MCP path, never write to stdout. Stdout carries the protocol, so a stray `console.log` or a prompt corrupts it. Diagnostics go to stderr. The CLI prints only through `src/cli/output.ts`.
-- Non-interactive runs never wait: with no TTY, missing required fields and unconfirmed `caution` or `destructive` operations fail with a message naming the fields or `--yes`.
+- Non-interactive runs never wait: with no TTY, missing required fields and unconfirmed `caution` or `destructive` operations (or escalations) fail with a message naming the fields or `--yes`. `--yes` is listed only on commands that may ask; the others accept it silently so old scripts keep working.
+- Help text is written for agents reading `--help` cold. Positionals are registered optional (a terminal asks for a missing one) but shown as `<name>` through `src/cli/help.ts`; the per-command undocumented marker lives once in the domain help. `ldesk status` exits 1 when no profile resolves or the server is not reachable.
 - Never put the API secret into an error message, `status` output, `--json` output or a log. `mcp install --scope print` shows a placeholder unless `--show-secret` is given.
 - Every operation built from the LibreDesk source rather than the documented OpenAPI spec has `undocumented: true`. `docs/api-coverage.md` lists them; regenerate with `npm run docs:undocumented` after a build and update that file.
 - Shapes of undocumented endpoints come from the LibreDesk v2.9.2 source: a fresh clone of tag `v2.9.2` (`git clone --depth 1 --branch v2.9.2 https://github.com/abhinavxd/libredesk.git`). Read the handler and request struct (`cmd/*.go`, `internal/*/models`), do not guess field names or required fields.

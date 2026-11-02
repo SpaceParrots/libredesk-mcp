@@ -86,6 +86,14 @@ const snippetList = defineOperation({
     });
   },
   present: (data) => asRecords(data).map(presentSnippet),
+  cli: {
+    notes: [
+      "Prints id, title, enabled, source, source_url, updated_at and a preview of the content; the table shows the first six, --json all of them.",
+      "Read the full content with `ldesk knowledge snippet get <id>`.",
+    ],
+    examples: ["ldesk knowledge snippet list", "ldesk knowledge snippet list --json", "ldesk knowledge snippet list --search refund --no-enabled"],
+    flags: { enabled: { on: "Only enabled snippets.", off: "Only disabled snippets." } },
+  },
 });
 
 const snippetGet = defineOperation({
@@ -100,6 +108,10 @@ const snippetGet = defineOperation({
   permission: PERMISSION,
   undocumented: true,
   run: (input, ctx) => findSnippet(input.id, ctx.call),
+  cli: {
+    notes: ["Snippet ids come from `ldesk knowledge snippet list`."],
+    examples: ["ldesk knowledge snippet get 3", "ldesk knowledge snippet get 3 --json"],
+  },
 });
 
 const snippetCreate = defineOperation({
@@ -112,6 +124,13 @@ const snippetCreate = defineOperation({
   impact: "write",
   permission: PERMISSION,
   undocumented: true,
+  cli: {
+    notes: ["Read long content from a file with --content @file.txt."],
+    examples: [
+      'ldesk knowledge snippet create --title "How do I get a refund?" --content @refund-answer.txt',
+      'ldesk knowledge snippet create --title "Shipping times" --content "Orders ship within 2 working days." --no-enabled',
+    ],
+  },
 });
 
 const snippetUpdate = defineOperation({
@@ -130,6 +149,10 @@ const snippetUpdate = defineOperation({
     const body = mergeForUpdate(current, input, SNIPPET_KEYS);
     return ctx.call("PUT", `/api/v1/ai/snippets/${input.id}`, { body });
   },
+  cli: {
+    notes: ["Only the given fields change; the others keep their value."],
+    examples: ["ldesk knowledge snippet update 3 --no-enabled", "ldesk knowledge snippet update 3 --content @refund-answer.txt"],
+  },
 });
 
 const snippetImportUrl = defineOperation({
@@ -144,6 +167,13 @@ const snippetImportUrl = defineOperation({
   impact: "write",
   permission: PERMISSION,
   undocumented: true,
+  cli: {
+    notes: [
+      "The LibreDesk server fetches the page (HTML only) and saves its readable text as an enabled snippet, titled with the page title, or host and path when there is none.",
+      "Disable it afterwards with `ldesk knowledge snippet update <id> --no-enabled`.",
+    ],
+    examples: ["ldesk knowledge snippet import-url --url https://example.com/faq"],
+  },
 });
 
 const snippetDelete = defineOperation({
@@ -158,6 +188,10 @@ const snippetDelete = defineOperation({
   effect: "Assistants stop using it.",
   permission: PERMISSION,
   undocumented: true,
+  cli: {
+    notes: ["To keep the snippet but stop assistants using it, run `ldesk knowledge snippet update <id> --no-enabled` instead."],
+    examples: ["ldesk knowledge snippet delete 3 --yes"],
+  },
 });
 
 const faqList = defineOperation({
@@ -171,6 +205,10 @@ const faqList = defineOperation({
   impact: "read",
   permission: PERMISSION,
   undocumented: true,
+  cli: {
+    notes: ["Approve or reject a suggestion by its id with `ldesk knowledge faq approve` or `reject`."],
+    examples: ["ldesk knowledge faq list --status pending", "ldesk knowledge faq list --json"],
+  },
 });
 
 const faqApprove = defineOperation({
@@ -200,6 +238,10 @@ const faqApprove = defineOperation({
     }
     return ctx.call("POST", `/api/v1/ai/faq-suggestions/${input.id}/approve`, { body: { question, answer } });
   },
+  cli: {
+    notes: ["Creates an enabled snippet. Without --question or --answer the suggested text is kept."],
+    examples: ["ldesk knowledge faq approve 11", 'ldesk knowledge faq approve 11 --answer "We refund within 30 days."'],
+  },
 });
 
 const faqReject = defineOperation({
@@ -213,6 +255,7 @@ const faqReject = defineOperation({
   impact: "write",
   permission: PERMISSION,
   undocumented: true,
+  cli: { examples: ["ldesk knowledge faq reject 11"] },
 });
 
 const learningGet = defineOperation({
@@ -225,6 +268,7 @@ const learningGet = defineOperation({
   impact: "read",
   permission: PERMISSION,
   undocumented: true,
+  cli: { examples: ["ldesk knowledge learning get"] },
 });
 
 const learningSet = defineOperation({
@@ -238,6 +282,10 @@ const learningSet = defineOperation({
   effect: "Mines resolved conversations with your AI provider, at a cost per conversation.",
   permission: PERMISSION,
   undocumented: true,
+  cli: {
+    examples: ["ldesk knowledge learning set --enabled --yes", "ldesk knowledge learning set --no-enabled --yes"],
+    flags: { enabled: { on: "Turn FAQ learning on.", off: "Turn FAQ learning off." } },
+  },
 });
 
 /** AI snippets, FAQ suggestions and FAQ learning: one CLI command, one MCP tool. */
@@ -246,6 +294,11 @@ export const aiKnowledgeDomain = defineDomain({
   tool: "libredesk_ai_knowledge",
   toolset: "knowledge",
   summary: "Manage the snippets AI assistants answer from, and review FAQ suggestions.",
+  groups: {
+    snippet: "Manage snippets, the short answers AI assistants quote to customers.",
+    faq: "Review FAQ suggestions mined from resolved conversations: approve one as a snippet or reject it.",
+    learning: "Show or switch FAQ learning, which turns resolved conversations into FAQ suggestions.",
+  },
   operations: [
     snippetList,
     snippetGet,
