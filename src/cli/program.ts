@@ -15,6 +15,7 @@ import { DOMAINS } from "../domains/index.js";
 import { InputError, LibreDeskError } from "../errors.js";
 import { buildCatalog } from "../ops/catalog.js";
 import { addDomainCommands, type CliDeps } from "./domain-commands.js";
+import { runInteractive } from "./interactive.js";
 import { handleCliError } from "./output.js";
 
 const require = createRequire(import.meta.url);
@@ -80,7 +81,7 @@ export function createProgram(deps: CliDeps, extras: ProgramExtras = {}): Comman
     .description("Interactive mode")
     .action(async () => {
       try {
-        await (extras.runInteractive ?? notAvailableYet("Interactive mode"))();
+        await (extras.runInteractive ?? (() => runInteractive(DOMAINS, deps)))();
       } catch (error) {
         fail(error);
       }
