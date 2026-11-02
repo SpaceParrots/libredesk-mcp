@@ -152,23 +152,34 @@ function mergedDescription(uses: readonly FieldUse[]): string {
   return [first.description, ...others.map((g) => `For ${g.actions.join(", ")}: ${g.description}`)].filter(Boolean).join(" ");
 }
 
+/** A schema's JSON Schema without descriptions, to tell whether two actions type a field alike. */
+function typeSignature(schema: z.ZodType): string {
+  return JSON.stringify(z.toJSONSchema(schema), (key, value: unknown) => (key === "description" ? undefined : value));
+}
+
 /**
  * Merge every action's fields into one flat shape, each optional and without its default (a
- * default would be filled in for actions that do not have the field). A field several actions
- * share keeps the first action's schema; per-action validation still uses each action's own.
+ * default would be filled in for actions that do not have the field). The client validates
+ * arguments against this shape before an action sees them, so a field that actions type
+ * differently, such as `id` as one number or a list, accepts every variant here; each action's
+ * own schema then checks it in `dispatchAction`.
  */
 export function mergeShapes(actions: ActionMap): z.ZodRawShape {
-  const fields = new Map<string, { schema: Schema; uses: FieldUse[] }>();
+  const fields = new Map<string, { variants: Map<string, z.ZodType>; uses: FieldUse[] }>();
   for (const [action, def] of Object.entries(actions)) {
     for (const [key, schema] of Object.entries(def.shape)) {
-      const entry = fields.get(key) ?? { schema, uses: [] };
-      fields.set(key, { ...entry, uses: [...entry.uses, { action, description: descriptionOf(schema), required: isRequired(schema) }] });
+      const entry = fields.get(key) ?? { variants: new Map<string, z.ZodType>(), uses: [] };
+      const core = withoutDefault(schema);
+      const variants = new Map(entry.variants).set(typeSignature(core), core);
+      fields.set(key, { variants, uses: [...entry.uses, { action, description: descriptionOf(schema), required: isRequired(schema) }] });
     }
   }
   return Object.fromEntries(
-    [...fields].map(([key, { schema, uses }]) => {
+    [...fields].map(([key, { variants, uses }]) => {
       const description = mergedDescription(uses);
-      const optional = withoutDefault(schema).optional();
+      const types = [...variants.values()];
+      const merged = types.length === 1 ? (types[0] as z.ZodType) : z.union(types as [z.ZodType, z.ZodType, ...z.ZodType[]]);
+      const optional = merged.optional();
       return [key, description ? optional.describe(description) : optional];
     }),
   );

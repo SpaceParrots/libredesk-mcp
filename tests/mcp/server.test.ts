@@ -134,6 +134,11 @@ describe("MCP server over a transport", () => {
       const typo = await client.callTool({ name: "libredesk_help_center", arguments: { action: "get", id: 1, titel: "x" } });
       expect(typo.isError).toBe(true);
       expect(JSON.stringify(typo.content)).toContain("titel: not a field of this action");
+
+      // help_center_toggle takes one id; the list of article_set_status must still pass the tool schema.
+      const bulk = await client.callTool({ name: "libredesk_publish", arguments: { action: "article_set_status", id: [1, 2], status: "draft" } });
+      expect(JSON.stringify(bulk.content)).not.toContain("validation");
+      expect(JSON.stringify(bulk.content)).toContain("ldesk login");
     } finally {
       await client.close();
       await server.close();
