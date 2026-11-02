@@ -55,6 +55,12 @@ const LINK_DEFAULTS: Readonly<Record<string, string>> = {
   rel: "noopener noreferrer nofollow",
 };
 
+/** `rel` values read back as default: the editor's own, and what LibreDesk's server-side sanitizer stores. */
+const DEFAULT_LINK_RELS: ReadonlySet<string> = new Set([
+  LINK_DEFAULTS.rel,
+  "nofollow noopener",
+]);
+
 const LINK_ATTRIBUTES = Object.entries(LINK_DEFAULTS)
   .map(([name, value]) => `${name}="${value}"`)
   .join(" ");
@@ -178,7 +184,7 @@ function findUnsupported(html: string): string | undefined {
     for (const [rawName, value] of Object.entries(element.attributes)) {
       const name = rawName.toLowerCase();
       if (tag === "a" && name in LINK_DEFAULTS) {
-        if (value === LINK_DEFAULTS[name]) continue;
+        if (name === "rel" ? DEFAULT_LINK_RELS.has(value) : value === LINK_DEFAULTS[name]) continue;
       } else if (allowed.includes(name)) {
         continue;
       } else if (

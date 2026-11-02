@@ -236,6 +236,12 @@ describe("links", () => {
     );
   });
 
+  it("reads the rel the LibreDesk sanitizer stores as a default link", () => {
+    const html = '<p><a href="https://e.com" rel="nofollow noopener" target="_blank">x</a></p>';
+    expect(isMarkdownSafe(html)).toBe(true);
+    expect(readArticleContent(html, "markdown").content).toBe("[x](https://e.com)");
+  });
+
   it("falls back to html for a non-default target or rel", () => {
     expect(
       readArticleContent('<p><a href="/a" target="_self">x</a></p>', "markdown")
