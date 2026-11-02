@@ -7,7 +7,7 @@ import { formatDoctorReport } from "../../src/commands/doctor.js";
 import { PACKAGE_NAME } from "../../src/constants.js";
 import { NoProfileError } from "../../src/errors.js";
 import { discoverClientConfigs, isLibreDeskEntry } from "../../src/services/client-config.js";
-import { commandLine, meetsVersion, runDoctor, type DoctorCheck, type DoctorDeps } from "../../src/services/doctor.js";
+import { commandLine, launchRisks, meetsVersion, runDoctor, type DoctorCheck, type DoctorDeps } from "../../src/services/doctor.js";
 import { expandVars, planSpawn, probeLaunch, resolveCommand } from "../../src/services/mcp-probe.js";
 import type { StatusReport } from "../../src/services/status.js";
 import { fakeSpawn, type Behaviour } from "./fake-child.js";
@@ -229,11 +229,14 @@ describe("runDoctor", () => {
     expect(check((await runDoctor(relative.deps)).checks, "launch libredesk").detail).toBe("not started: the command ./bin/ldesk is a path inside this folder");
     expect(relative.calls).toHaveLength(0);
 
-    await writeClaude({ mcpServers: { libredesk: { command: "ldesk", args: ["serve"] } } });
-    const win = deps(() => ok, { platform: "win32", env: { Path: "C:\\npm", PATHEXT: ".EXE;.CMD" }, exists: (p) => p.toLowerCase().endsWith("ldesk.cmd") });
-    const launch = check((await runDoctor(win.deps)).checks, "launch libredesk");
-    expect(launch.detail).toBe("not started: this folder has a file named ldesk.cmd");
-    expect(win.calls).toHaveLength(0);
+    // launchRisks directly: runDoctor with platform win32 would join the temp paths Windows-style,
+    // which only exist when the test runs on Windows.
+    const planted = (p: string): boolean => p.toLowerCase() === "c:\\work\\ldesk.cmd";
+    const env = { Path: "C:\\npm", PATHEXT: ".EXE;.CMD" };
+    const user = { command: "ldesk", scope: "user" } as const;
+    expect(launchRisks(user, "C:\\work", "win32", env, planted)).toEqual(["this folder has a file named ldesk.cmd"]);
+    expect(launchRisks(user, "C:\\work", "win32", env, () => false)).toEqual([]);
+    expect(launchRisks(user, "/work", "linux", env, () => true)).toEqual([]);
   });
 
   it("shows ${VAR} references as written and never their values, for started and skipped entries", async () => {
