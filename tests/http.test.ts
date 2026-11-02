@@ -42,6 +42,12 @@ describe("buildUrl", () => {
       "https://ex.com/helpdesk/api/v1/tags?a=1",
     );
   });
+  it("strips a trailing slash from the base url", () => {
+    expect(buildUrl("https://ex.com/helpdesk/", "/api/v1/tags")).toBe("https://ex.com/helpdesk/api/v1/tags");
+  });
+  it("strips several trailing slashes from the base url", () => {
+    expect(buildUrl("https://ex.com/helpdesk//", "/api/v1/tags")).toBe("https://ex.com/helpdesk/api/v1/tags");
+  });
   it("adds a missing leading slash and encodes values", () => {
     expect(buildUrl("https://ex.com", "api/v1/x", { q: "a b", f: true })).toBe("https://ex.com/api/v1/x?q=a+b&f=true");
   });
@@ -61,6 +67,12 @@ describe("request", () => {
     expect(calls[0].headers.get("Accept")).toBe("application/json");
     expect(calls[0].headers.get("Content-Type")).toBe("application/json");
     expect(calls[0].body).toBe('{"a":1}');
+  });
+
+  it("requests a prefixed, slash-terminated profile url without doubling slashes", async () => {
+    const { fetchImpl, calls } = fakeFetch(200, { status: "success", data: null });
+    await request({ ...profile, url: "https://ex.com/helpdesk/" }, "GET", "/api/v1/tags", { fetchImpl });
+    expect(calls[0].url).toBe("https://ex.com/helpdesk/api/v1/tags");
   });
 
   it("sends no Content-Type without a body", async () => {
@@ -117,8 +129,18 @@ describe("request", () => {
   it("never puts the secret into an error message or hint", async () => {
     const { fetchImpl } = fakeFetch(500, { status: "error", message: "bad token key:secret and secret" });
     const err = (await caught(request(profile, "GET", "/x", { fetchImpl }))) as ApiError;
-    expect(err.message).not.toContain("secret");
+    expect(err.message).toBe("bad •••• and ••••");
     expect(err.hint ?? "").not.toContain("secret");
+  });
+
+  it("redacts the secret from a NetworkError message and cause", async () => {
+    const fetchImpl: typeof fetch = () => Promise.reject(new TypeError("refused for token key:secret / secret"));
+    const err = (await caught(request(profile, "GET", "/x", { fetchImpl }))) as NetworkError;
+    expect(err).toBeInstanceOf(NetworkError);
+    expect(err.message).not.toContain("secret");
+    expect(err.message).not.toContain("key:");
+    expect((err.cause as Error).message).not.toContain("secret");
+    expect((err.cause as Error).message).toBe("refused for •••• / ••••");
   });
 
   it("times out with NetworkError naming the URL", async () => {
