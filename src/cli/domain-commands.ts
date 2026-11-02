@@ -30,8 +30,6 @@ export interface CliDeps {
   readonly onError?: (err: unknown) => never;
 }
 
-const RESERVED = new Set(["json", "yes", "profile"]);
-
 function describeOperation(op: Operation): string {
   const head = op.undocumented ? `${op.summary} [undocumented API]` : op.summary;
   return op.impact === "caution" || op.impact === "destructive" ? `${head}\nEffect: ${op.effect ?? ""}` : head;
@@ -101,9 +99,6 @@ function cliInputError(error: InputError, op: Operation, command: Command): Inpu
 }
 
 function buildCommand(op: Operation, name: string, deps: CliDeps): Command {
-  const clash = Object.keys(op.input).find((key) => RESERVED.has(key));
-  if (clash) throw new Error(`${op.name}: input field ${clash} clashes with the --${clash} flag`);
-
   const command = new Command(name).description(describeOperation(op));
   const fields = new Map(operationFields(op).map((info) => [info.name, info]));
   for (const field of op.positional ?? []) {

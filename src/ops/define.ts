@@ -97,6 +97,9 @@ export function fillPath(path: string, value: (param: string) => string): string
   return path.replace(PATH_PARAM, (_match, param: string) => value(param));
 }
 
+/** Input field names the generated CLI flags and the MCP action tool use themselves. */
+export const RESERVED_FIELD_NAMES: ReadonlySet<string> = new Set(["action", "profile", "json", "yes"]);
+
 function assertInputKeys(name: string, input: z.ZodRawShape, what: string, keys: readonly string[] | undefined): void {
   for (const key of keys ?? []) {
     if (!Object.hasOwn(input, key)) throw new Error(`${name}: ${what} field ${key} is not an input field`);
@@ -125,6 +128,9 @@ function assertNoBodyFields(op: Operation): void {
 
 /** Check an operation definition and return it unchanged. Throws on an inconsistent definition. */
 export function defineOperation<S extends z.ZodRawShape>(op: Operation<S>): Operation<S> {
+  for (const key of Object.keys(op.input)) {
+    if (RESERVED_FIELD_NAMES.has(key)) throw new Error(`${op.name}: input field ${key} is reserved`);
+  }
   assertPathParams(op);
   assertInputKeys(op.name, op.input, "query", op.query);
   assertInputKeys(op.name, op.input, "positional", op.positional);

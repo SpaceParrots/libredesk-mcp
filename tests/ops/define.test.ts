@@ -18,6 +18,12 @@ describe("defineOperation", () => {
     expect(defineOperation(op)).toBe(op);
   });
 
+  it.each(["action", "profile", "json", "yes"])("rejects a reserved input field name %s", (field) => {
+    expect(() =>
+      defineOperation({ ...base, name: "get", path: "/x", input: { [field]: z.string().optional() }, query: [field] }),
+    ).toThrow(`get: input field ${field} is reserved`);
+  });
+
   it("rejects a path param missing from input", () => {
     expect(() => defineOperation({ ...base, name: "get", path: "/x/{id}", input: {} })).toThrow(
       "get: path param {id} is not an input field",
