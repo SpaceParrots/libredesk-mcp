@@ -5,19 +5,28 @@
  */
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { Domain, Operation } from "../ops/define.js";
+import type { Domain, Impact, Operation } from "../ops/define.js";
 import { runOperation } from "../ops/run.js";
 import { actionTool, jsonContent, type ActionMap } from "./action-tool.js";
 
 /** Appended to the tool description when every action of the domain is undocumented. */
 export const ALL_UNDOCUMENTED = "Uses undocumented endpoints.";
 
-/** The action summary: the operation summary, plus ` [undocumented]` when asked, plus the caution or destructive effect. */
+function riskLabel(impact: Impact): string | undefined {
+  if (impact === "destructive") return "DESTRUCTIVE";
+  return impact === "caution" ? "CAUTION" : undefined;
+}
+
+/**
+ * The action summary: the operation summary, plus ` [undocumented]` when asked, plus the caution
+ * or destructive effect, plus an escalation as `CAUTION when <condition>: <effect>`.
+ */
 export function actionSummary(op: Operation, markUndocumented = true): string {
   const undocumented = markUndocumented && op.undocumented ? " [undocumented]" : "";
-  const risk =
-    op.impact === "destructive" ? ` DESTRUCTIVE: ${op.effect ?? ""}` : op.impact === "caution" ? ` CAUTION: ${op.effect ?? ""}` : "";
-  return `${op.summary}${undocumented}${risk}`;
+  const label = riskLabel(op.impact);
+  const risk = label === undefined ? "" : ` ${label}: ${op.effect ?? ""}`;
+  const escalate = op.escalate === undefined ? "" : ` ${riskLabel(op.escalate.impact) ?? ""} when ${op.escalate.condition}: ${op.escalate.effect}`;
+  return `${op.summary}${undocumented}${risk}${escalate}`;
 }
 
 function exposed(domain: Domain): Operation[] {
@@ -53,6 +62,6 @@ export function registerDomainTool(server: McpServer, domain: Domain): void {
   const description = allUndocumented(ops) ? `${domain.summary} ${ALL_UNDOCUMENTED}` : domain.summary;
   actionTool(server, domain.tool, description, domainActions(domain), {
     readOnlyHint: ops.every((op) => op.impact === "read"),
-    destructiveHint: ops.some((op) => op.impact === "destructive"),
+    destructiveHint: ops.some((op) => op.impact === "destructive" || op.escalate?.impact === "destructive"),
   });
 }

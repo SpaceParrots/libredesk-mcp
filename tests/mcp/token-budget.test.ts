@@ -15,8 +15,9 @@ function measure(recorded: readonly RecordedTool[]): number {
   }, 0);
 }
 
-// Measured 2026-11-02: default toolsets 8177 chars (14515 before trimming descriptions).
-// Ceiling: measured * 1.1 rounded up to the next 500.
+// Measured 2026-11-02: default toolsets 8288 chars (14515 before trimming descriptions; 8177 before the
+// articles create escalation note). CLI-only help (`Operation.cli`) is not part of the tool surface.
+// Ceiling: measured * 1.1 rounded up to the next 500, capped at the hard bound.
 const DEFAULT_CEILING = 9_000;
 const HARD_BOUND = 9_000;
 

@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Command } from "commander";
 import { createProgram } from "../../src/cli/program.js";
 import type { CliDeps } from "../../src/cli/domain-commands.js";
 import type { PromptAdapter } from "../../src/cli/prompt.js";
@@ -199,15 +200,86 @@ describe("profile", () => {
 });
 
 describe("status", () => {
-  it("prints the report with the key masked", async () => {
+  afterEach(() => {
+    process.exitCode = undefined;
+  });
+
+  it("prints the report with the key masked and exits 0 when reachable", async () => {
     stubMe();
     await run(loginArgs);
     await run(["status", "--json"]);
     const report = printed[0]?.data as Record<string, unknown>;
     expect(report).toMatchObject({ profile: "help-desk-example", reachable: true, apiKey: "••••5678" });
     expect(printed[0]?.json).toBe(true);
+    expect(process.exitCode ?? 0).toBe(0);
+  });
+
+  it("prints the report, then exits 1 when the server is not reachable", async () => {
+    stubMe();
+    await run(loginArgs);
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("connect ECONNREFUSED")));
+    await run(["status"]);
+    expect(printed[0]?.data).toMatchObject({ reachable: false });
+    expect(errors).toEqual([]);
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("fails through the error handler (exit 1) when no profile resolves", async () => {
+    await run(["status"]);
+    expect(printed).toEqual([]);
+    expect(errors).toHaveLength(1);
+  });
+
+  it("says in its help when it exits 1", () => {
+    const help = helpOf(createProgram(deps()), "status").replaceAll(/\s+/g, " ");
+    expect(help).toContain("Exits 1 when no profile is set up (with an error) or the server is not reachable");
   });
 });
+
+describe("help", () => {
+  const flat = (text: string) => text.replaceAll(/\s+/g, " ");
+
+  it("root help has a section for scripts and agents", () => {
+    const help = createProgram(deps()).helpInformation();
+    expect(help).toContain("For scripts and agents:");
+    const text = flat(help);
+    expect(text).toContain("ldesk status");
+    expect(text).toContain("--json");
+    expect(text).toContain("--yes");
+    expect(text).toContain("@path");
+    expect(text).toContain("@@");
+    expect(text).toContain("null");
+    expect(text).toContain("Exit codes: 0 ok, 1 error, 130 cancelled.");
+    expect(text).toContain("ldesk catalog");
+    expect(text).toContain("interactive menu");
+    expect(help.split("\n").every((line) => line.length <= 80)).toBe(true);
+    expect(/^[\x20-\x7E\n]*$/.test(help)).toBe(true);
+  });
+
+  it("built-ins that confirm describe --yes the same way and say what they ask about", () => {
+    const program = createProgram(deps());
+    for (const path of [["login"], ["request"], ["mcp", "install"]]) {
+      const help = flat(helpOf(program, ...path));
+      expect(help, path.join(" ")).toContain("--yes confirm without asking (required when no terminal is attached)");
+      expect(help, path.join(" ")).toContain("Asks for confirmation:");
+    }
+    expect(helpOf(program, "status")).not.toContain("--yes");
+  });
+
+  it("group commands have a real description", () => {
+    const program = createProgram(deps());
+    for (const path of [["help-center", "collection"], ["knowledge", "snippet"], ["knowledge", "faq"], ["knowledge", "learning"]]) {
+      expect(helpOf(program, ...path), path.join(" ")).not.toMatch(/\w+ commands\n/);
+    }
+  });
+});
+
+function helpOf(program: Command, ...path: string[]): string {
+  let command: Command | undefined = program;
+  for (const name of path) command = command?.commands.find((c) => c.name() === name);
+  if (command === undefined) throw new Error(`no command ${path.join(" ")}`);
+  return command.helpInformation();
+}
 
 describe("request", () => {
   beforeEach(() => {

@@ -49,7 +49,7 @@ describe("collectMissing", () => {
 
 describe("confirmImpact", () => {
   it("non-TTY destructive op without --yes fails with the effect and a --yes hint", async () => {
-    const error = await confirmImpact(deleteArticle, { yes: false, isTTY: false, prompt: neverPrompt }).catch(
+    const error = await confirmImpact(deleteArticle, {}, { yes: false, isTTY: false, prompt: neverPrompt }).catch(
       (e: unknown) => e,
     );
     expect(error).toBeInstanceOf(ConfirmationRequiredError);
@@ -60,22 +60,34 @@ describe("confirmImpact", () => {
   it("TTY destructive op asks and a No cancels", async () => {
     const confirm = vi.fn(() => Promise.resolve(false));
     const prompt: PromptAdapter = { ...neverPrompt, confirm };
-    await expect(confirmImpact(deleteArticle, { yes: false, isTTY: true, prompt })).rejects.toBeInstanceOf(CancelledError);
+    await expect(confirmImpact(deleteArticle, {}, { yes: false, isTTY: true, prompt })).rejects.toBeInstanceOf(CancelledError);
     expect(confirm).toHaveBeenCalledWith({ message: deleteArticle.effect, initialValue: false });
   });
 
   it("TTY Yes proceeds", async () => {
     const prompt: PromptAdapter = { ...neverPrompt, confirm: () => Promise.resolve(true) };
-    await expect(confirmImpact(deleteArticle, { yes: false, isTTY: true, prompt })).resolves.toBeUndefined();
+    await expect(confirmImpact(deleteArticle, {}, { yes: false, isTTY: true, prompt })).resolves.toBeUndefined();
   });
 
   it("--yes skips the prompt", async () => {
-    await expect(confirmImpact(deleteArticle, { yes: true, isTTY: true, prompt: neverPrompt })).resolves.toBeUndefined();
-    await expect(confirmImpact(deleteArticle, { yes: true, isTTY: false, prompt: neverPrompt })).resolves.toBeUndefined();
+    await expect(confirmImpact(deleteArticle, {}, { yes: true, isTTY: true, prompt: neverPrompt })).resolves.toBeUndefined();
+    await expect(confirmImpact(deleteArticle, {}, { yes: true, isTTY: false, prompt: neverPrompt })).resolves.toBeUndefined();
   });
 
   it("read and write ops never prompt", async () => {
-    await expect(confirmImpact(op("articles", "get"), { yes: false, isTTY: true, prompt: neverPrompt })).resolves.toBeUndefined();
-    await expect(confirmImpact(createArticle, { yes: false, isTTY: false, prompt: neverPrompt })).resolves.toBeUndefined();
+    await expect(confirmImpact(op("articles", "get"), {}, { yes: false, isTTY: true, prompt: neverPrompt })).resolves.toBeUndefined();
+    await expect(confirmImpact(createArticle, { status: "draft" }, { yes: false, isTTY: false, prompt: neverPrompt })).resolves.toBeUndefined();
+  });
+
+  it("an escalation applies only when its condition holds", async () => {
+    const values = { collection_id: 1, title: "t", content: "c", status: "published" };
+    const error = await confirmImpact(createArticle, values, { yes: false, isTTY: false, prompt: neverPrompt }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ConfirmationRequiredError);
+    expect((error as ConfirmationRequiredError).message).toBe(createArticle.escalate?.effect);
+    const confirm = vi.fn(() => Promise.resolve(true));
+    await confirmImpact(createArticle, values, { yes: false, isTTY: true, prompt: { ...neverPrompt, confirm } });
+    expect(confirm).toHaveBeenCalledWith({ message: createArticle.escalate?.effect, initialValue: false });
+    await expect(confirmImpact(createArticle, values, { yes: true, isTTY: false, prompt: neverPrompt })).resolves.toBeUndefined();
+    await expect(confirmImpact(createArticle, { title: "t" }, { yes: false, isTTY: false, prompt: neverPrompt })).resolves.toBeUndefined();
   });
 });

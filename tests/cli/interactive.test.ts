@@ -113,6 +113,39 @@ describe("runInteractive", () => {
     expect(log.at(-1)).toBe("confirm:Do something else?");
   });
 
+  it("asks for confirmation before creating a published article, and a No runs nothing", async () => {
+    const log: string[] = [];
+    // confirms: optional fields yes, publish confirmation No, something else no
+    const prompt = scripted(
+      { select: ["articles", "create", "status", "published", "(done)"], text: ["7", "T", "C"], confirm: [true, false, false] },
+      log,
+    );
+    const { d, runs } = setup(prompt);
+    await runInteractive(DOMAINS, d);
+    expect(runs).toHaveLength(0);
+    expect(log).toContain(`confirm:${articles.operations.find((o) => o.name === "create")?.escalate?.effect ?? ""}`);
+    expect(log).toContain("note:undefined:Cancelled.");
+  });
+
+  it("does not offer hidden fields as optional fields", async () => {
+    const offered: string[] = [];
+    const base = scripted({ select: ["articles", "get"], text: ["42"], confirm: [true, false] });
+    const prompt: PromptAdapter = {
+      ...base,
+      select: <T extends string>(o: { message: string; options: readonly { value: T; label: string; hint?: string }[] }) => {
+        if (o.message === "Which field?") {
+          offered.push(...o.options.map((option) => option.value));
+          return Promise.resolve("(done)" as T);
+        }
+        return base.select<T>(o);
+      },
+    };
+    const { d } = setup(prompt);
+    await runInteractive(DOMAINS, d);
+    expect(offered).toContain("format");
+    expect(offered).not.toContain("collection_id");
+  });
+
   it("a No at the destructive confirmation runs nothing and asks what next", async () => {
     const log: string[] = [];
     // confirms: optional fields no, destructive No, something else no

@@ -105,7 +105,7 @@ const collectionSettings = {
 
 const collectionName = z.string().describe("Collection name.");
 
-const isPublished = z.boolean().describe("Public visibility; new collections default to false.");
+const isPublished = z.boolean().describe("Publish the collection. New collections start unpublished.");
 
 const getHelpCenter = (id: number, call: <T>(method: "GET", path: string) => Promise<T>) =>
   call<Record<string, unknown>>("GET", `/api/v1/help-centers/${id}`);
@@ -146,6 +146,10 @@ const list = defineOperation({
   undocumented: true,
   present: (data) =>
     asRecords(data).map((hc) => pick(hc, ["id", "name", "slug", "is_active", "default_locale", "updated_at"])),
+  cli: {
+    notes: ["Prints id, name, slug, is_active, default_locale and updated_at of each help center. Find a help center by its slug here."],
+    examples: ["ldesk help-center list", "ldesk help-center list --json"],
+  },
 });
 
 const get = defineOperation({
@@ -158,6 +162,10 @@ const get = defineOperation({
   impact: "read",
   permission: PERMISSION,
   undocumented: true,
+  cli: {
+    notes: ["Help center ids come from `ldesk help-center list`."],
+    examples: ["ldesk help-center get 2", "ldesk help-center get 2 --json"],
+  },
 });
 
 const locales = defineOperation({
@@ -169,6 +177,7 @@ const locales = defineOperation({
   impact: "read",
   permission: PERMISSION,
   undocumented: true,
+  cli: { examples: ["ldesk help-center locales"] },
 });
 
 const tree = defineOperation({
@@ -192,6 +201,10 @@ const tree = defineOperation({
       tree: asRecords(response.tree).map(presentTreeCollection),
     };
   },
+  cli: {
+    notes: ["The result is nested; read it with --json. Article content is left out: use `ldesk articles get <id>`."],
+    examples: ["ldesk help-center tree 2 --json", "ldesk help-center tree 2 --locale de --json"],
+  },
 });
 
 const insights = defineOperation({
@@ -204,6 +217,7 @@ const insights = defineOperation({
   impact: "read",
   permission: PERMISSION,
   undocumented: true,
+  cli: { examples: ["ldesk help-center insights 2 --json"] },
 });
 
 const create = defineOperation({
@@ -215,6 +229,13 @@ const create = defineOperation({
   impact: "write",
   permission: PERMISSION,
   undocumented: true,
+  cli: {
+    notes: ["Repeat --allowed-locales once per locale. Locale codes come from `ldesk help-center locales`."],
+    examples: [
+      'ldesk help-center create --name Help --slug help --page-title "Acme Help"',
+      'ldesk help-center create --name Docs --slug docs --page-title "Acme Docs" --default-locale de --allowed-locales de --allowed-locales en',
+    ],
+  },
 });
 
 const update = defineOperation({
@@ -238,6 +259,14 @@ const update = defineOperation({
     const body = mergeForUpdate(current, input, HELP_CENTER_KEYS);
     return ctx.call("PUT", `/api/v1/help-centers/${input.id}`, { body });
   },
+  cli: {
+    notes: ["Only the given settings change. --theme replaces the whole theme, so start from the theme in `ldesk help-center get <id> --json`."],
+    examples: [
+      'ldesk help-center update 2 --page-title "Acme Support"',
+      "ldesk help-center update 2 --theme @theme.json",
+      "ldesk help-center update 2 --livechat-inbox-id null",
+    ],
+  },
 });
 
 const toggle = defineOperation({
@@ -251,6 +280,10 @@ const toggle = defineOperation({
   effect: "Changes what the public sees.",
   permission: PERMISSION,
   undocumented: true,
+  cli: {
+    notes: ["Each call flips the state; is_active in `ldesk help-center list` shows the current one."],
+    examples: ["ldesk help-center toggle 2 --yes"],
+  },
 });
 
 const remove = defineOperation({
@@ -264,6 +297,7 @@ const remove = defineOperation({
   effect: "Deletes it with all its collections and articles.",
   permission: PERMISSION,
   undocumented: true,
+  cli: { examples: ["ldesk help-center delete 2 --yes"] },
 });
 
 const collectionList = defineOperation({
@@ -278,6 +312,10 @@ const collectionList = defineOperation({
   permission: PERMISSION,
   undocumented: true,
   present: (data) => asRecords(data).map(presentCollection),
+  cli: {
+    notes: ["Prints id, name, slug, is_published, locale, parent_id, sort_order and updated_at; the table shows the first six, --json all of them."],
+    examples: ["ldesk help-center collection list 2", "ldesk help-center collection list 2 --json"],
+  },
 });
 
 const collectionCreate = defineOperation({
@@ -296,6 +334,13 @@ const collectionCreate = defineOperation({
   impact: "write",
   permission: PERMISSION,
   undocumented: true,
+  cli: {
+    notes: ["Help center ids come from `ldesk help-center list`, parent ids from `ldesk help-center collection list <help-center-id>`."],
+    examples: [
+      "ldesk help-center collection create 2 --name Billing --locale de",
+      "ldesk help-center collection create 2 --name Billing --locale de --parent-id 5 --is-published",
+    ],
+  },
 });
 
 const collectionUpdate = defineOperation({
@@ -327,6 +372,14 @@ const collectionUpdate = defineOperation({
     const body = mergeForUpdate(current, input, COLLECTION_KEYS);
     return ctx.call("PUT", `/api/v1/help-centers/${input.help_center_id}/collections/${input.id}`, { body });
   },
+  cli: {
+    notes: ["Takes the help center id, then the collection id. Only the given fields change."],
+    examples: [
+      'ldesk help-center collection update 2 5 --name "Billing and refunds"',
+      "ldesk help-center collection update 2 5 --parent-id null",
+      "ldesk help-center collection update 2 5 --no-is-published",
+    ],
+  },
 });
 
 const collectionToggle = defineOperation({
@@ -341,6 +394,10 @@ const collectionToggle = defineOperation({
   effect: "Changes what the public help center shows.",
   permission: PERMISSION,
   undocumented: true,
+  cli: {
+    notes: ["Each call flips is_published. To set a known state, use `ldesk help-center collection update <help-center-id> <id> --is-published` or `--no-is-published`."],
+    examples: ["ldesk help-center collection toggle 5 --yes"],
+  },
 });
 
 const collectionReorder = defineOperation({
@@ -361,6 +418,12 @@ const collectionReorder = defineOperation({
   undocumented: true,
   run: (input, ctx) =>
     ctx.call("PUT", `/api/v1/help-centers/${input.help_center_id}/collection-sort-order`, { body: input.order }),
+  cli: {
+    examples: [
+      "ldesk help-center collection reorder 2 --order '{\"5\":0,\"3\":1}'",
+      "ldesk help-center collection reorder 2 --order @order.json",
+    ],
+  },
 });
 
 const collectionDelete = defineOperation({
@@ -375,6 +438,10 @@ const collectionDelete = defineOperation({
   effect: "Deletes it and its articles.",
   permission: PERMISSION,
   undocumented: true,
+  cli: {
+    notes: ["Takes the help center id, then the collection id."],
+    examples: ["ldesk help-center collection delete 2 9 --yes"],
+  },
 });
 
 /** Help centers and their collections: one CLI command, one MCP tool. */
@@ -383,6 +450,7 @@ export const helpCenterDomain = defineDomain({
   tool: "libredesk_help_center",
   toolset: "knowledge",
   summary: "Manage help centers and their collections.",
+  groups: { collection: "Manage the collections of a help center, the sections that hold its articles." },
   operations: [
     list,
     get,

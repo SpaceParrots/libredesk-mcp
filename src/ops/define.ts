@@ -37,6 +37,48 @@ type Callback<A extends unknown[], R> = { bivarianceHack(...args: A): R }["bivar
  */
 export type FieldName<S extends z.ZodRawShape> = keyof z.infer<z.ZodObject<S>> & string;
 
+/**
+ * Help text only the CLI shows. The MCP tool definitions never include it, so it costs no model
+ * context: put examples and explanations an agent reading `--help` needs here, not in `summary`.
+ */
+export interface CliHelp<S extends z.ZodRawShape = z.ZodRawShape> {
+  /** Full command lines starting with `ldesk `, shown under "Examples:". */
+  readonly examples?: readonly string[];
+  /** Short paragraphs shown under "Notes:", such as what a list prints or where an id comes from. */
+  readonly notes?: readonly string[];
+  /** Optional fields left out of the help; their flags are still accepted. */
+  readonly hidden?: readonly FieldName<S>[];
+  /**
+   * Help text of a boolean field's `--<field>` (`on`) and `--no-<field>` (`off`) flags, for fields
+   * whose description reads wrong as either; by default `on` is the description and `off` is
+   * "Do not" plus its first sentence.
+   */
+  readonly flags?: Readonly<Partial<Record<FieldName<S>, BooleanFlagText>>>;
+}
+
+/** Help text of the two flags of a boolean field. */
+export interface BooleanFlagText {
+  /** Text of `--<field>`. */
+  readonly on?: string;
+  /** Text of `--no-<field>`. */
+  readonly off?: string;
+}
+
+/**
+ * A higher impact for some inputs only: `articles create` with `status: "published"` needs the
+ * same confirmation as `set_status`. `when` sees the values the caller passed, before defaults.
+ */
+export interface Escalation {
+  /** True when the passed values make the operation riskier. */
+  readonly when: (values: Readonly<Record<string, unknown>>) => boolean;
+  /** Plain words for `when`, such as "status is published"; shown in help and the MCP action list. */
+  readonly condition: string;
+  /** The impact that applies when `when` is true. */
+  readonly impact: "caution" | "destructive";
+  /** What happens then, shown before confirming. */
+  readonly effect: string;
+}
+
 /** One LibreDesk endpoint (or a composite of several), declared once. */
 export interface Operation<S extends z.ZodRawShape = z.ZodRawShape> {
   /** snake_case, unique per domain; the MCP action name. */
@@ -69,6 +111,10 @@ export interface Operation<S extends z.ZodRawShape = z.ZodRawShape> {
   readonly run?: Callback<[input: z.infer<z.ZodObject<S>>, ctx: OperationContext], Promise<unknown>>;
   /** Transforms the response before it is returned. */
   readonly present?: Callback<[data: unknown, input: z.infer<z.ZodObject<S>>], unknown>;
+  /** Help text only the CLI shows. */
+  readonly cli?: CliHelp<S>;
+  /** A higher impact for some inputs, confirmed like a `caution` or `destructive` operation. */
+  readonly escalate?: Escalation;
 }
 
 /** A group of operations: one CLI command and one MCP tool. */
@@ -81,6 +127,8 @@ export interface Domain {
   readonly toolset: Toolset;
   /** One line describing the domain. */
   readonly summary: string;
+  /** CLI description of each operation group, keyed by group name; every group needs one. */
+  readonly groups?: Readonly<Record<string, string>>;
   /** The domain's operations. */
   readonly operations: readonly Operation[];
 }
@@ -126,6 +174,30 @@ function assertNoBodyFields(op: Operation): void {
   }
 }
 
+const IMPACT_RANK: Readonly<Record<Impact, number>> = { read: 0, write: 1, caution: 2, destructive: 3 };
+
+function assertCliHelp(op: Operation): void {
+  const cli = op.cli;
+  if (cli === undefined) return;
+  for (const key of cli.hidden ?? []) {
+    const schema = Object.hasOwn(op.input, key) ? op.input[key] : undefined;
+    if (schema === undefined) throw new Error(`${op.name}: hidden field ${key} is not an input field`);
+    if (fieldInfo(key, schema).required) throw new Error(`${op.name}: hidden field ${key} is required`);
+  }
+  assertInputKeys(op.name, op.input, "flag text", Object.keys(cli.flags ?? {}));
+  for (const example of cli.examples ?? []) {
+    if (!example.startsWith("ldesk ")) throw new Error(`${op.name}: example "${example}" must start with "ldesk "`);
+  }
+}
+
+function assertEscalation(op: Operation): void {
+  const escalate = op.escalate;
+  if (escalate === undefined) return;
+  if (!escalate.effect) throw new Error(`${op.name}: escalate needs an effect`);
+  if (!escalate.condition) throw new Error(`${op.name}: escalate needs a condition`);
+  if (IMPACT_RANK[escalate.impact] <= IMPACT_RANK[op.impact]) throw new Error(`${op.name}: escalate must raise the impact`);
+}
+
 /** Check an operation definition and return it unchanged. Throws on an inconsistent definition. */
 export function defineOperation<S extends z.ZodRawShape>(op: Operation<S>): Operation<S> {
   for (const key of Object.keys(op.input)) {
@@ -141,15 +213,20 @@ export function defineOperation<S extends z.ZodRawShape>(op: Operation<S>): Oper
   if (op.group !== undefined && !op.name.startsWith(`${op.group}_`)) {
     throw new Error(`${op.name}: operations in group ${op.group} must be named ${op.group}_*`);
   }
+  assertCliHelp(op);
+  assertEscalation(op);
   return op;
 }
 
-/** Check a domain definition and return it unchanged. Throws on duplicate operation names. */
+/** Check a domain definition and return it unchanged. Throws on duplicate operation names and undescribed groups. */
 export function defineDomain(domain: Domain): Domain {
   const seen = new Set<string>();
   for (const op of domain.operations) {
     if (seen.has(op.name)) throw new Error(`${domain.name}: duplicate operation ${op.name}`);
     seen.add(op.name);
+    if (op.group !== undefined && !domain.groups?.[op.group]) {
+      throw new Error(`${domain.name}: group ${op.group} needs a description in groups`);
+    }
   }
   return domain;
 }

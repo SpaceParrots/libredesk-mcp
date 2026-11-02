@@ -59,7 +59,7 @@ describe("flags", () => {
     expect(parseFlagValues(sample, { count: "null" }, []).count).toBeNull();
     expect(() => parseFlagValues(sample, { title: "null" }, [])).not.toThrow();
     expect(parseFlagValues(sample, { title: "null" }, []).title).toBe("null");
-    expect(flagsFor(sample).find((f) => f.field === "count")?.description).toContain("null clears it");
+    expect(flagsFor(sample).find((f) => f.field === "count")?.description).toContain("Pass null to clear it.");
   });
 
   it("keeps array values", () => {
