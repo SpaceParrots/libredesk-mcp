@@ -8,6 +8,7 @@
 import type { z } from "zod";
 import type { Profile } from "../config.js";
 import type { HttpMethod, RequestOptions } from "../http.js";
+import { fieldInfo } from "./fields.js";
 
 /** How much an operation changes on the server. `caution` and `destructive` need confirmation. */
 export type Impact = "read" | "write" | "caution" | "destructive";
@@ -91,19 +92,43 @@ export function pathParams(path: string): string[] {
   return [...path.matchAll(PATH_PARAM)].map((m) => m[1] ?? "");
 }
 
+/** Replace every `{param}` placeholder in a path template with `value(param)`. */
+export function fillPath(path: string, value: (param: string) => string): string {
+  return path.replace(PATH_PARAM, (_match, param: string) => value(param));
+}
+
 function assertInputKeys(name: string, input: z.ZodRawShape, what: string, keys: readonly string[] | undefined): void {
   for (const key of keys ?? []) {
     if (!Object.hasOwn(input, key)) throw new Error(`${name}: ${what} field ${key} is not an input field`);
   }
 }
 
+function assertPathParams(op: Operation): void {
+  for (const param of pathParams(op.path)) {
+    const schema = Object.hasOwn(op.input, param) ? op.input[param] : undefined;
+    if (schema === undefined) throw new Error(`${op.name}: path param {${param}} is not an input field`);
+    const info = fieldInfo(param, schema);
+    if (!info.required && !("defaultValue" in info)) {
+      throw new Error(`${op.name}: path param {${param}} must not be optional (give it a default instead)`);
+    }
+  }
+}
+
+/** A GET or DELETE without a custom `run` has no body, so every field must reach the path or the query. */
+function assertNoBodyFields(op: Operation): void {
+  if (op.run !== undefined || (op.method !== "GET" && op.method !== "DELETE")) return;
+  const sent = new Set<string>([...pathParams(op.path), ...(op.query ?? [])]);
+  for (const key of Object.keys(op.input)) {
+    if (!sent.has(key)) throw new Error(`${op.name}: ${op.method} field ${key} is neither a path param nor a query field`);
+  }
+}
+
 /** Check an operation definition and return it unchanged. Throws on an inconsistent definition. */
 export function defineOperation<S extends z.ZodRawShape>(op: Operation<S>): Operation<S> {
-  for (const param of pathParams(op.path)) {
-    if (!Object.hasOwn(op.input, param)) throw new Error(`${op.name}: path param {${param}} is not an input field`);
-  }
+  assertPathParams(op);
   assertInputKeys(op.name, op.input, "query", op.query);
   assertInputKeys(op.name, op.input, "positional", op.positional);
+  assertNoBodyFields(op);
   if ((op.impact === "caution" || op.impact === "destructive") && !op.effect) {
     throw new Error(`${op.name}: ${op.impact} operations need an effect`);
   }

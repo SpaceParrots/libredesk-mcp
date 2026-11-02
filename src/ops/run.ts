@@ -9,7 +9,7 @@ import type { Profile } from "../config.js";
 import { getCurrentProfile } from "../context.js";
 import { InputError, PermissionError } from "../errors.js";
 import { request, type QueryValue } from "../http.js";
-import { pathParams, type Operation, type OperationContext } from "./define.js";
+import { fillPath, pathParams, type Operation, type OperationContext } from "./define.js";
 
 /** An operation's input split into the request parts. */
 export interface SplitInput {
@@ -38,7 +38,7 @@ function toQueryValue(value: unknown): QueryValue {
 export function splitInput(op: Operation, input: Record<string, unknown>): SplitInput {
   const params = new Set(pathParams(op.path));
   const queryKeys = new Set<string>(op.query ?? []);
-  const path = op.path.replace(/\{([^{}]+)\}/g, (_match, name: string) => {
+  const path = fillPath(op.path, (name) => {
     const value = input[name];
     if (value === undefined || value === null) {
       throw new InputError(`${op.name}: missing path parameter ${name}`, { fields: [name] });
@@ -65,8 +65,8 @@ function issueLines(issues: readonly z.core.$ZodIssue[]): { lines: string[]; fie
   for (const issue of issues) {
     if (issue.code === "unrecognized_keys") {
       for (const key of issue.keys) {
-        lines.push(`${key}: unknown field`);
-        fields.push(key);
+        lines.push(`${[...issue.path, key].map(String).join(".")}: unknown field`);
+        fields.push(String(issue.path[0] ?? key));
       }
       continue;
     }
