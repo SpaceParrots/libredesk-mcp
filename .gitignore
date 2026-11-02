@@ -16,7 +16,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Atomic-write leftovers (saveFragment / saveOperation use .tmp on crash)
+# Atomic-write leftovers (temp files of the config writer after a crash)
 *.tmp
 
 # IDE
@@ -31,7 +31,6 @@ Thumbs.db
 # Environment / secrets
 .env
 .env.*
-
 
 # Claude Code
 .claude/
