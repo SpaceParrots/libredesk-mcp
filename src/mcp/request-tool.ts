@@ -33,7 +33,7 @@ export function requestActions(domains: readonly Domain[]): ActionMap {
             hint: "Ask the user, then call again with confirm: true.",
           });
         }
-        return jsonContent(await rawRequest(input));
+        return jsonContent(await rawRequest(input, { caller: "mcp" }));
       },
     },
     catalog: {
