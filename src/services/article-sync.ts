@@ -4,10 +4,15 @@
  * frontmatter; after a create, the new article's `id` is written into the file, so the next run
  * updates that article instead of making a second one. An article is only written when a field
  * differs, and sync never changes its status: publishing stays a separate, confirmed step.
+ *
+ * Only regular files are synced: a `.md` name that is a symbolic link could point anywhere, for
+ * example into the home directory from a cloned repo. Over MCP the path must also lie inside a
+ * root folder, because a model chooses it.
  */
 
-import { readdir, readFile, stat, writeFile } from "node:fs/promises";
-import { basename, extname, join, resolve } from "node:path";
+import { lstat, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { basename, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { ENV } from "../constants.js";
 import { canonicalHtml, readArticleContent, toArticleHtml, htmlToMarkdown, markdownToHtml, type ContentFormat } from "../content/markdown.js";
 import { parseFrontmatter, setFrontmatterField, type FrontmatterValue } from "../content/frontmatter.js";
 import { ARTICLE_KEYS, NO_COLLECTION } from "../domains/article-record.js";
@@ -23,6 +28,13 @@ export interface SyncOptions {
   readonly collectionId?: number;
   /** Report what would change without writing anything, on the server or to the files. */
   readonly dryRun: boolean;
+  /** When set, `path` must lie inside this folder, after symbolic links are resolved. */
+  readonly root?: string;
+  /**
+   * Fail a file whose `collection_id` would move its article. Set over MCP: a move can make an
+   * article public, so it belongs to the publish tool, not to sync.
+   */
+  readonly refuseMoves?: boolean;
 }
 
 /** File access, replaceable in tests. */
@@ -31,6 +43,10 @@ export interface SyncFs {
   readonly writeFile: (path: string, text: string) => Promise<void>;
   readonly readdir: (path: string) => Promise<string[]>;
   readonly isDirectory: (path: string) => Promise<boolean>;
+  /** Whether the path itself, not what a link points to, is a regular file. */
+  readonly isRegularFile: (path: string) => Promise<boolean>;
+  /** The path with every symbolic link resolved. */
+  readonly realpath: (path: string) => Promise<string>;
 }
 
 /** What happened to one file. */
@@ -57,7 +73,24 @@ const NODE_FS: SyncFs = {
   writeFile: (path, text) => writeFile(path, text, "utf8"),
   readdir: (path) => readdir(path),
   isDirectory: async (path) => (await stat(path)).isDirectory(),
+  isRegularFile: async (path) => (await lstat(path)).isFile(),
+  realpath: (path) => realpath(path),
 };
+
+/** The folder `articles sync` may read when a model chooses the path: `LIBREDESK_SYNC_ROOT`, else the working directory. */
+export function mcpSyncRoot(env: NodeJS.ProcessEnv = process.env, cwd: string = process.cwd()): string {
+  const root = env[ENV.SYNC_ROOT];
+  return root === undefined || root === "" ? cwd : resolve(cwd, root);
+}
+
+/** Throw unless `path`, with links resolved, is `root` or inside it. */
+async function assertInside(path: string, root: string, fs: SyncFs): Promise<void> {
+  const [real, base] = await Promise.all([fs.realpath(path), fs.realpath(root)]);
+  const rel = relative(base, real);
+  if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+    throw new InputError(`${path} is outside ${base}. Sync over MCP only reads files below that folder; set ${ENV.SYNC_ROOT} for the MCP server to allow another one.`);
+  }
+}
 
 const NUMBER_KEYS = ["id", "collection_id", "sort_order"] as const;
 const STRING_KEYS = ["title", "excerpt", "locale", "meta_title", "meta_description", "meta_image_url", "format"] as const;
@@ -84,7 +117,8 @@ function checkTypes(data: Readonly<Record<string, FrontmatterValue>>): void {
     const status = unknown.includes("status") ? " Sync never publishes; set the status with set_status afterwards." : "";
     throw new InputError(`unknown frontmatter ${unknown.join(", ")}.${status} Known: ${SYNC_KEYS.join(", ")}.`);
   }
-  for (const key of NUMBER_KEYS) if (key in data && !Number.isInteger(data[key])) throw new InputError(`frontmatter ${key} must be a whole number`);
+  for (const key of NUMBER_KEYS) if (key in data && !Number.isSafeInteger(data[key])) throw new InputError(`frontmatter ${key} must be a whole number`);
+  for (const key of ["id", "collection_id"] as const) if (key in data && (data[key] as number) <= 0) throw new InputError(`frontmatter ${key} must be greater than 0`);
   for (const key of BOOLEAN_KEYS) if (key in data && typeof data[key] !== "boolean") throw new InputError(`frontmatter ${key} must be true or false`);
   if ("format" in data && data.format !== "markdown" && data.format !== "html") throw new InputError('frontmatter format must be "markdown" or "html"');
 }
@@ -173,6 +207,9 @@ async function syncFile(file: string, local: LocalArticle, text: string, options
   const current = await ctx.call<Record<string, unknown>>("GET", `/api/v1/collections/${NO_COLLECTION}/articles/${local.id}`);
   const changed = changedFields(local, current);
   const move = local.collectionId !== undefined && local.collectionId !== current.collection_id;
+  if (move && options.refuseMoves === true) {
+    throw new InputError(`collection_id ${local.collectionId} would move article ${local.id} from collection ${String(current.collection_id)}; sync over MCP does not move articles, use article_move of libredesk_publish`);
+  }
   if (move) changed.push("collection_id");
   if (changed.length === 0) return { file: name, action: "unchanged", id: local.id };
   if (options.dryRun) return { file: name, action: "would update", id: local.id, changed };
@@ -189,11 +226,15 @@ async function syncFile(file: string, local: LocalArticle, text: string, options
  * reported and the others still run. Two files with the same `id` fail rather than overwrite each other.
  */
 export async function syncArticles(options: SyncOptions, ctx: OperationContext, fs: SyncFs = NODE_FS): Promise<SyncResult> {
-  const files = await listFiles(resolve(options.path), fs);
+  const target = resolve(options.path);
+  if (options.root !== undefined) await assertInside(target, options.root, fs);
+  const files = await listFiles(target, fs);
   const results: SyncFileResult[] = [];
   const seen = new Map<number, string>();
   for (const file of files) {
     try {
+      // A regular file in a folder already inside the root stays inside it.
+      if (!(await fs.isRegularFile(file))) throw new InputError("not a regular file; symbolic links are not synced");
       const text = await fs.readFile(file);
       const local = readLocalArticle(text);
       if (local.id !== undefined) {

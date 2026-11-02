@@ -164,7 +164,7 @@ describe("registerDomainTool", () => {
     registerDomainTool(recordingServer(recorded), articles);
     const field = recorded[0]?.shape.collection_id as z.core.$ZodType;
     expect(z.globalRegistry.get(field)?.description).toBe(
-      "Collection id. For move: Target collection id. For list: Only this collection.",
+      "Collection id. For list: Only this collection.",
     );
   });
 
@@ -233,7 +233,7 @@ describe("domain tool calls", () => {
     const run = vi.fn().mockResolvedValue({ ok: true });
     const res = await dispatchAction(domainActions(things, run), { action: "save", title: "T" });
     expect(text(res)).toBe('{"ok":true}');
-    expect(run).toHaveBeenCalledWith(save, { title: "T" });
+    expect(run).toHaveBeenCalledWith(save, { title: "T" }, { caller: "mcp" });
   });
 
   it("returns the hint to log in when no profile is configured", async () => {

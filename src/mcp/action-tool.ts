@@ -12,6 +12,7 @@
 
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ENV } from "../constants.js";
 import { withProfile } from "../context.js";
 import { toLibreDeskError } from "../errors.js";
 import { maskSecrets } from "../mask.js";
@@ -55,6 +56,19 @@ function errorResult(text: string): ToolResult {
   return { content: [{ type: "text", text }], isError: true };
 }
 
+/**
+ * Why an MCP call may not use `profile`, or undefined when it may. With `LIBREDESK_MCP_PROFILES`
+ * set (comma-separated names), a call can only name one of those profiles; without it any stored
+ * profile is allowed. Calls without a profile always use the default.
+ */
+export function mcpProfileError(profile: string | undefined, env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const list = env[ENV.MCP_PROFILES];
+  if (profile === undefined || profile === "" || list === undefined || list.trim() === "") return undefined;
+  const allowed = list.split(",").map((name) => name.trim()).filter(Boolean);
+  if (allowed.includes(profile)) return undefined;
+  return `profile "${profile}" is not allowed for this server. Allowed: ${allowed.join(", ")} (${ENV.MCP_PROFILES}).`;
+}
+
 /** Convert any thrown value into an error result: the message plus a `Hint:` line, never a stack or cause. */
 export function toolErrorResult(err: unknown): ToolResult {
   const error = toLibreDeskError(err);
@@ -86,6 +100,8 @@ export async function dispatchAction(actions: ActionMap, args: Record<string, un
     return errorResult(`Unknown action "${String(action)}". Valid actions: ${Object.keys(actions).join(", ")}.`);
   }
   if (profile !== undefined && typeof profile !== "string") return errorResult("profile: expected a profile name");
+  const refused = mcpProfileError(profile);
+  if (refused !== undefined) return errorResult(refused);
   const def = actions[action] as ActionDef;
   const parsed = z.object(def.shape).strict().safeParse(rest);
   if (!parsed.success) {

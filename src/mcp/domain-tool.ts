@@ -73,7 +73,7 @@ export function domainActions(domain: Domain, run: typeof runOperation = runOper
     actions[op.name] = {
       summary: actionSummary(op, markUndocumented),
       shape: domainToolShape(op),
-      handler: async (args) => jsonContent(await run(op, args)),
+      handler: async (args) => jsonContent(await run(op, args, { caller: "mcp" })),
     };
   }
   return actions;

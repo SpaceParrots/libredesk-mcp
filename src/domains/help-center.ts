@@ -16,6 +16,18 @@ const PERMISSION = "help_center:manage";
 /** Shown before a collection goes public or offline. */
 const COLLECTION_PUBLIC_EFFECT = "Changes what the public help center shows.";
 
+/**
+ * Script, styles and domain of the public pages. Setting them changes what every visitor runs or
+ * where the help center lives, so they need a confirmation and the MCP domain tool leaves them out.
+ */
+const CUSTOM_CODE_ESCALATION = {
+  when: (values: Readonly<Record<string, unknown>>) => ["custom_js", "custom_css", "custom_domain"].some((key) => values[key] !== undefined),
+  condition: "custom_js, custom_css or custom_domain is given",
+  impact: "caution",
+  effect: "Changes the code or the domain of the public help center pages.",
+  fields: ["custom_js", "custom_css", "custom_domain"],
+} as const;
+
 /** Keys of LibreDesk's `HelpCenterRequest`: the body of a help center create or update. */
 const HELP_CENTER_KEYS = [
   "name",
@@ -244,6 +256,7 @@ const create = defineOperation({
   path: "/api/v1/help-centers",
   input: { name, slug, page_title: pageTitle, ...helpCenterSettings },
   impact: "write",
+  escalate: CUSTOM_CODE_ESCALATION,
   permission: PERMISSION,
   undocumented: true,
   cli: {
@@ -269,6 +282,7 @@ const update = defineOperation({
   },
   positional: ["id"],
   impact: "write",
+  escalate: CUSTOM_CODE_ESCALATION,
   permission: PERMISSION,
   undocumented: true,
   run: async (input, ctx) => {
@@ -383,11 +397,12 @@ const collectionUpdate = defineOperation({
   positional: ["help_center_id", "id"],
   impact: "write",
   escalate: {
-    when: (values) => values.is_published !== undefined,
-    condition: "is_published is given",
+    // A new parent changes which collections sit above its articles, and so what is public.
+    when: (values) => values.is_published !== undefined || values.parent_id !== undefined,
+    condition: "is_published or parent_id is given",
     impact: "caution",
     effect: COLLECTION_PUBLIC_EFFECT,
-    fields: ["is_published"],
+    fields: ["is_published", "parent_id"],
   },
   permission: PERMISSION,
   undocumented: true,
@@ -400,7 +415,7 @@ const collectionUpdate = defineOperation({
     notes: ["Takes the help center id, then the collection id. Only the given fields change."],
     examples: [
       'ldesk help-center collection update 2 5 --name "Billing and refunds"',
-      "ldesk help-center collection update 2 5 --parent-id null",
+      "ldesk help-center collection update 2 5 --parent-id null --yes",
       "ldesk help-center collection update 2 5 --no-is-published --yes",
     ],
   },
@@ -440,6 +455,33 @@ const collectionPublish = defineOperation({
       "ldesk help-center collection publish 2 5 --no-is-published --yes",
     ],
     flags: { is_published: { on: "Publish the collections.", off: "Unpublish the collections." } },
+  },
+});
+
+const collectionMove = defineOperation({
+  name: "collection_move",
+  group: "collection",
+  summary: "Move a collection to another parent (null: top level).",
+  method: "PUT",
+  path: "/api/v1/help-centers/{help_center_id}/collections/{id}",
+  input: {
+    help_center_id: helpCenterId,
+    id: collectionId,
+    parent_id: collectionSettings.parent_id.unwrap(),
+  },
+  positional: ["help_center_id", "id"],
+  impact: "caution",
+  effect: "Can make its articles public and AI-visible.",
+  permission: PERMISSION,
+  undocumented: true,
+  run: async (input, ctx) => {
+    const current = findCollection(await listCollections(input.help_center_id, ctx.call), input.help_center_id, input.id);
+    const body = mergeForUpdate(current, { parent_id: input.parent_id }, COLLECTION_KEYS);
+    return presentCollection((await ctx.call("PUT", `/api/v1/help-centers/${input.help_center_id}/collections/${input.id}`, { body })) ?? {});
+  },
+  cli: {
+    notes: ["Takes the help center id, then the collection id. The collection keeps its own is_published."],
+    examples: ["ldesk help-center collection move 2 5 --parent-id 3 --yes", "ldesk help-center collection move 2 5 --parent-id null --yes"],
   },
 });
 
@@ -529,6 +571,7 @@ export const helpCenterDomain = defineDomain({
     collectionCreate,
     collectionUpdate,
     collectionPublish,
+    collectionMove,
     collectionToggle,
     collectionReorder,
     collectionDelete,

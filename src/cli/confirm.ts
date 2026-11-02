@@ -12,8 +12,9 @@ import { operationFields, type FieldInfo } from "../ops/fields.js";
 import { kebab } from "./flags.js";
 import type { PromptAdapter } from "./prompt.js";
 
+/** A typed `null` is a value (it clears a nullable field, as in `--parent-id null`); only absence and "" are missing. */
 function isMissing(value: unknown): boolean {
-  return value === undefined || value === null || value === "";
+  return value === undefined || value === "";
 }
 
 const nonEmpty = (v: string) => (v.trim() === "" ? "A value is required." : undefined);

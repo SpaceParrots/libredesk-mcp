@@ -42,7 +42,8 @@ export function parseFrontmatter(text: string): FrontmatterDoc {
   const lines = splitLines(text.startsWith(BOM) ? text.slice(1) : text);
   const end = closingFence(lines);
   if (end < 0) return { data: {}, body: lines.join("\n") };
-  const data: Record<string, FrontmatterValue> = {};
+  // No prototype, so a `__proto__` line is an ordinary key that callers see and can reject.
+  const data = Object.create(null) as Record<string, FrontmatterValue>;
   for (const [offset, line] of lines.slice(1, end).entries()) {
     if (line.trim() === "" || line.trimStart().startsWith("#")) continue;
     const match = FIELD.exec(line);
