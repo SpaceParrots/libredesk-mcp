@@ -6,15 +6,17 @@
 import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { clackPrompts, type PromptAdapter } from "./cli/prompt.js";
+import { runInteractive as runMenu } from "./cli/interactive.js";
 import { printResult } from "./cli/output.js";
 import { createProgram, notAvailableYet } from "./cli/program.js";
+import { DOMAINS } from "./domains/index.js";
 import { runOperation } from "./ops/run.js";
 
 /** What {@link main} may replace; everything defaults to the real thing. */
 export interface MainDeps {
   readonly isTTY?: boolean;
   readonly prompt?: PromptAdapter;
-  /** Interactive mode. Provided by a later task; defaults to a "not available yet" error. */
+  /** Interactive mode. Defaults to the clack menu. */
   readonly runInteractive?: () => Promise<void>;
   /** MCP server. Provided by a later task; defaults to a "not available yet" error. */
   readonly startServer?: () => Promise<void>;
@@ -26,9 +28,9 @@ export interface MainDeps {
  */
 export async function main(argv: readonly string[], deps: MainDeps = {}): Promise<void> {
   const isTTY = deps.isTTY ?? Boolean(process.stdin.isTTY && process.stdout.isTTY);
-  const runInteractive = deps.runInteractive ?? notAvailableYet("Interactive mode");
   const startServer = deps.startServer ?? notAvailableYet("The MCP server");
   const cli = { isTTY, prompt: deps.prompt ?? clackPrompts, run: runOperation, print: printResult };
+  const runInteractive = deps.runInteractive ?? (() => runMenu(DOMAINS, cli));
   if (argv.length <= 2) {
     await (isTTY ? runInteractive() : startServer());
     return;

@@ -110,7 +110,13 @@ export function handleCliError(
     write(`${error.message}\n`);
     return exit(EXIT_CANCELLED);
   }
+  printError(error, write);
+  return exit(EXIT_ERROR);
+}
+
+/** Print `Error: message` and the `Hint:` line to stderr without exiting. Never prints the cause. */
+export function printError(err: unknown, write: Writer = stderr): void {
+  const error = toLibreDeskError(err);
   write(`Error: ${error.message}\n`);
   if (error.hint) write(`Hint: ${error.hint}\n`);
-  return exit(EXIT_ERROR);
 }

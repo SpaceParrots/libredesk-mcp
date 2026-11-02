@@ -29,7 +29,8 @@ function isJson(v: string): string | undefined {
   }
 }
 
-async function ask(info: FieldInfo, prompt: PromptAdapter): Promise<unknown> {
+/** Prompt for one field, by kind: confirm, select, number, JSON, list, password or text. */
+export async function askField(info: FieldInfo, prompt: PromptAdapter): Promise<unknown> {
   const message = info.description === "" ? info.name : `${info.name}: ${info.description}`;
   if (info.array) {
     const hint = info.enumValues ? ` (${info.enumValues.join(", ")})` : "";
@@ -76,7 +77,7 @@ export async function collectMissing(
     });
   }
   const collected: Record<string, unknown> = { ...values };
-  for (const info of missing) collected[info.name] = await ask(info, deps.prompt);
+  for (const info of missing) collected[info.name] = await askField(info, deps.prompt);
   return collected;
 }
 
