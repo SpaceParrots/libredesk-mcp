@@ -77,6 +77,9 @@ export function createProgram(deps: CliDeps, extras: ProgramExtras = {}): Comman
     .description("Interactive mode")
     .action(async () => {
       try {
+        if (!deps.isTTY) {
+          throw new InputError("Interactive mode needs a terminal.", { hint: "Run it from a terminal, or use the typed commands (ldesk --help)." });
+        }
         await (extras.runInteractive ?? (() => runInteractive(DOMAINS, deps)))();
       } catch (error) {
         fail(error);

@@ -7,7 +7,7 @@ import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { clackPrompts, type PromptAdapter } from "./cli/prompt.js";
 import { runInteractive as runMenu } from "./cli/interactive.js";
-import { printResult } from "./cli/output.js";
+import { handleCliError, printResult } from "./cli/output.js";
 import { createProgram } from "./cli/program.js";
 import { DOMAINS } from "./domains/index.js";
 import { startMcpServer } from "./mcp/server.js";
@@ -21,6 +21,8 @@ export interface MainDeps {
   readonly runInteractive?: () => Promise<void>;
   /** MCP server on stdio. Defaults to {@link startMcpServer}. */
   readonly startServer?: () => Promise<void>;
+  /** Handles a startup error of the no-args path. Defaults to `handleCliError`, which prints to stderr and exits. */
+  readonly onError?: (err: unknown) => never;
 }
 
 /**
@@ -33,7 +35,11 @@ export async function main(argv: readonly string[], deps: MainDeps = {}): Promis
   const cli = { isTTY, prompt: deps.prompt ?? clackPrompts, run: runOperation, print: printResult };
   const runInteractive = deps.runInteractive ?? (() => runMenu(DOMAINS, cli));
   if (argv.length <= 2) {
-    await (isTTY ? runInteractive() : startServer());
+    try {
+      await (isTTY ? runInteractive() : startServer());
+    } catch (error) {
+      (deps.onError ?? handleCliError)(error);
+    }
     return;
   }
   await createProgram(cli, { runInteractive, startServer }).parseAsync([...argv]);

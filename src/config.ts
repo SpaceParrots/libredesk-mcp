@@ -127,6 +127,11 @@ export function normalizeUrl(url: string): string {
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new ConfigError(`"${url}" must start with http:// or https://.`);
   }
+  if (parsed.username !== "" || parsed.password !== "") {
+    throw new ConfigError("The URL must not contain a user name or password.", {
+      hint: "Remove the user:password@ part. The API key and secret are given separately.",
+    });
+  }
   return trimmed;
 }
 
