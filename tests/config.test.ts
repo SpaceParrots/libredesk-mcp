@@ -1,10 +1,10 @@
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   EMPTY_CONFIG, assertValidProfileName, getConfigPath, linkProject, loadConfig, normalizeProjectPath, normalizeUrl,
-  removeProfile, saveConfig, unlinkProject, upsertProfile, useProfile, type Profile,
+  removeProfile, saveConfig, sendsCredentialsInClear, unlinkProject, upsertProfile, useProfile, type Profile,
 } from "../src/config.js";
 import { ConfigError, ProfileNotFoundError } from "../src/errors.js";
 
@@ -32,6 +32,17 @@ describe("normalizeUrl", () => {
   it("rejects non-http urls", () => {
     expect(() => normalizeUrl("ftp://x")).toThrow(ConfigError);
     expect(() => normalizeUrl("not a url")).toThrow(ConfigError);
+  });
+});
+
+describe("sendsCredentialsInClear", () => {
+  it("is true only for plain http to a host that is not loopback", () => {
+    expect(sendsCredentialsInClear("http://desk.example.com")).toBe(true);
+    expect(sendsCredentialsInClear("http://10.0.0.5:9000")).toBe(true);
+    expect(sendsCredentialsInClear("https://desk.example.com")).toBe(false);
+    for (const local of ["http://localhost:9000", "http://127.0.0.1:9000", "http://[::1]:9000", "http://app.localhost"]) {
+      expect(sendsCredentialsInClear(local)).toBe(false);
+    }
   });
 });
 
@@ -123,7 +134,18 @@ describe("config file", () => {
     const nested = { LIBREDESK_CONFIG_DIR: join(dir, "a", "b") };
     await saveConfig(EMPTY_CONFIG, nested);
     expect(await readFile(getConfigPath(nested), "utf8")).toContain("profiles");
-    await expect(stat(getConfigPath(nested) + ".tmp")).rejects.toThrow();
+    expect(await readdir(join(dir, "a", "b"))).toEqual(["config.json"]);
+  });
+  it.skipIf(process.platform === "win32")("creates the config directory with mode 0700", async () => {
+    const nested = { LIBREDESK_CONFIG_DIR: join(dir, "private") };
+    await saveConfig(EMPTY_CONFIG, nested);
+    expect((await stat(join(dir, "private"))).mode & 0o777).toBe(0o700);
+  });
+  it("never writes through a file planted at the old fixed temp name", async () => {
+    const planted = `${getConfigPath(env)}.tmp`;
+    await writeFile(planted, "planted", "utf8");
+    await saveConfig(upsertProfile(EMPTY_CONFIG, p("prod")), env);
+    expect(await readFile(planted, "utf8")).toBe("planted");
   });
   it("invalid JSON throws ConfigError naming the file", async () => {
     await writeFile(getConfigPath(env), "{ nope", "utf8");
