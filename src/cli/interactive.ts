@@ -61,7 +61,8 @@ export function commandLineFor(domain: Domain, op: Operation, values: Record<str
 }
 
 async function askOptional(op: Operation, values: Record<string, unknown>, deps: CliDeps): Promise<void> {
-  const optional = operationFields(op).filter((info) => !info.required);
+  const hidden = new Set<string>(op.cli?.hidden ?? []);
+  const optional = operationFields(op).filter((info) => !info.required && !hidden.has(info.name));
   if (optional.length === 0) return;
   if (!(await deps.prompt.confirm({ message: "Set optional fields?", initialValue: false }))) return;
   for (;;) {
@@ -97,7 +98,7 @@ async function runOnce(domains: readonly Domain[], deps: CliDeps): Promise<void>
   const op = domain.operations.find((o) => o.name === opName) as Operation;
   const entered = await collectMissing(op, {}, { isTTY: true, prompt: deps.prompt });
   await askOptional(op, entered, deps);
-  await confirmImpact(op, { yes: false, isTTY: true, prompt: deps.prompt });
+  await confirmImpact(op, entered, { yes: false, isTTY: true, prompt: deps.prompt });
   const result = await withProfile(undefined, () => deps.run(op, entered));
   deps.print(result, { json: false });
   deps.prompt.note(commandLineFor(domain, op, entered), "Run it again with");

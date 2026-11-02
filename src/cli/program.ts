@@ -16,6 +16,7 @@ import { InputError } from "../errors.js";
 import { startMcpServer } from "../mcp/server.js";
 import { buildCatalog } from "../ops/catalog.js";
 import { addDomainCommands, type CliDeps } from "./domain-commands.js";
+import { addHelpSection, AGENT_GUIDE, HELP_CONFIG } from "./help.js";
 import { runInteractive } from "./interactive.js";
 import { handleCliError } from "./output.js";
 
@@ -35,7 +36,10 @@ export function createProgram(deps: CliDeps, extras: ProgramExtras = {}): Comman
   const fail = (error: unknown): never => (deps.onError ?? handleCliError)(error);
   const program = new Command(BIN_NAME)
     .version(pkg.version)
-    .description(`CLI and MCP server for the LibreDesk helpdesk API (built for LibreDesk ${LIBREDESK_TARGET_VERSION}).`);
+    .description(`CLI and MCP server for the LibreDesk helpdesk API (built for LibreDesk ${LIBREDESK_TARGET_VERSION}).`)
+    // Commands added with .command() inherit this; the generated domain commands set it themselves.
+    .configureHelp(HELP_CONFIG);
+  addHelpSection(program, AGENT_GUIDE);
 
   registerLogin(program, deps);
   registerProfile(program, deps);

@@ -79,6 +79,8 @@ const aiEnabled = z
 
 const status = z.enum(["draft", "published"]).describe('"draft" (not public) or "published".');
 
+const PUBLISH_EFFECT = "Publishing makes the article public, and AI-usable when ai_enabled is on.";
+
 function asRecords(data: unknown): Record<string, unknown>[] {
   return Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
 }
@@ -133,6 +135,13 @@ const list = defineOperation({
     });
     return flattenTree(response?.tree, input.collection_id);
   },
+  cli: {
+    notes: [
+      "Prints collection_id, collection_name, id, title, slug, locale, status, ai_enabled, updated_at and view counts; the table shows the first six, --json all of them.",
+      "Content is left out: read it with `ldesk articles get <id>`.",
+    ],
+    examples: ["ldesk articles list 2", "ldesk articles list 2 --collection-id 7 --json"],
+  },
 });
 
 const get = defineOperation({
@@ -151,11 +160,16 @@ const get = defineOperation({
   undocumented: true,
   run: async (input, ctx) =>
     presentArticle(await ctx.call("GET", `/api/v1/collections/${input.collection_id}/articles/${input.id}`), input.format),
+  cli: {
+    notes: ["Prints the content as markdown; --format html prints the stored HTML. Content markdown cannot express comes back as HTML with content_format: html."],
+    examples: ["ldesk articles get 42", "ldesk articles get 42 --format html", "ldesk articles get 42 --json"],
+    hidden: ["collection_id"],
+  },
 });
 
 const create = defineOperation({
   name: "create",
-  summary: "Create an article in a collection, as draft until set_status publishes it.",
+  summary: "Create an article in a collection, as draft unless status is published.",
   method: "POST",
   path: "/api/v1/collections/{collection_id}/articles",
   input: {
@@ -175,6 +189,18 @@ const create = defineOperation({
     const { collection_id: collection, format, ...rest } = input;
     const body = { ...rest, content: toArticleHtml(input.content, format) };
     return ctx.call("POST", `/api/v1/collections/${collection}/articles`, { body });
+  },
+  escalate: { when: (values) => values.status === "published", condition: "status is published", impact: "caution", effect: PUBLISH_EFFECT },
+  cli: {
+    notes: [
+      "New articles are drafts. --status published makes the article public at once (asks for confirmation); AI assistants answer from published articles unless --no-ai-enabled is given.",
+      "Read long content from a file with --content @file.md.",
+    ],
+    examples: [
+      'ldesk articles create 7 --title "Refund policy" --content @refunds.md',
+      'ldesk articles create 7 --title "Refund policy" --content @refunds.md --status published --yes',
+      'ldesk articles create 7 --title "Price table" --content @prices.html --format html',
+    ],
   },
 });
 
@@ -201,6 +227,10 @@ const update = defineOperation({
     const body = mergeForUpdate(current, changes, ARTICLE_KEYS);
     return ctx.call("PUT", `/api/v1/articles/${input.id}`, { body });
   },
+  cli: {
+    notes: ["Only the given fields change. Publish or unpublish with `ldesk articles set-status`, move with `ldesk articles move`."],
+    examples: ['ldesk articles update 42 --title "Refunds"', "ldesk articles update 42 --content @refunds.md", "ldesk articles update 42 --no-ai-enabled"],
+  },
 });
 
 const setStatus = defineOperation({
@@ -211,9 +241,10 @@ const setStatus = defineOperation({
   input: { id: articleId, status },
   positional: ["id"],
   impact: "caution",
-  effect: "Publishing makes the article public, and AI-usable when ai_enabled is on.",
+  effect: PUBLISH_EFFECT,
   permission: PERMISSION,
   undocumented: true,
+  cli: { examples: ["ldesk articles set-status 42 --status published --yes", "ldesk articles set-status 42 --status draft --yes"] },
 });
 
 const move = defineOperation({
@@ -226,6 +257,10 @@ const move = defineOperation({
   impact: "write",
   permission: PERMISSION,
   undocumented: true,
+  cli: {
+    notes: ["The target collection must belong to the article's help center."],
+    examples: ["ldesk articles move 42 --collection-id 9"],
+  },
 });
 
 const reorder = defineOperation({
@@ -244,6 +279,7 @@ const reorder = defineOperation({
   permission: PERMISSION,
   undocumented: true,
   run: (input, ctx) => ctx.call("PUT", `/api/v1/collections/${input.collection_id}/article-sort-order`, { body: input.order }),
+  cli: { examples: ["ldesk articles reorder 7 --order '{\"42\":0,\"43\":1}'", "ldesk articles reorder 7 --order @order.json"] },
 });
 
 const linkable = defineOperation({
@@ -260,6 +296,10 @@ const linkable = defineOperation({
   impact: "read",
   permission: PERMISSION,
   undocumented: true,
+  cli: {
+    notes: ["Pass the locale of the article you want to link; link one of the results with `ldesk articles link-translation`."],
+    examples: ["ldesk articles linkable 2 --exclude-locale de"],
+  },
 });
 
 const linkTranslation = defineOperation({
@@ -272,6 +312,10 @@ const linkTranslation = defineOperation({
   impact: "write",
   permission: PERMISSION,
   undocumented: true,
+  cli: {
+    notes: ["Find candidates with `ldesk articles linkable <help-center-id> --exclude-locale <locale of the article>`."],
+    examples: ["ldesk articles link-translation 43 --translation-of-id 42"],
+  },
 });
 
 const unlinkTranslation = defineOperation({
@@ -284,6 +328,7 @@ const unlinkTranslation = defineOperation({
   impact: "write",
   permission: PERMISSION,
   undocumented: true,
+  cli: { examples: ["ldesk articles unlink-translation 43"] },
 });
 
 const remove = defineOperation({
@@ -297,6 +342,7 @@ const remove = defineOperation({
   effect: "Deletes the article. Linked translations stay.",
   permission: PERMISSION,
   undocumented: true,
+  cli: { examples: ["ldesk articles delete 42 --yes"], hidden: ["collection_id"] },
 });
 
 /** Knowledge base articles: one CLI command, one MCP tool. */

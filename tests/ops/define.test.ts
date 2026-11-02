@@ -97,6 +97,50 @@ describe("defineOperation", () => {
       /create: .*collection_/,
     );
   });
+
+  it("accepts cli help with hidden optional fields", () => {
+    const op = {
+      ...base,
+      name: "get",
+      path: "/x/{id}",
+      input: { id: z.number(), collection_id: z.number().default(0) },
+      query: ["collection_id"] as const,
+      cli: { examples: ["ldesk x get 1"], notes: ["Note."], hidden: ["collection_id"] as const },
+    };
+    expect(defineOperation(op)).toBe(op);
+  });
+
+  it("rejects hidden cli fields that are unknown or required", () => {
+    const input = { id: z.number(), locale: z.string().optional() };
+    expect(() =>
+      defineOperation({ ...base, name: "get", path: "/x/{id}", input, query: ["locale"], cli: { hidden: ["slug" as "id"] } }),
+    ).toThrow(/get: hidden field slug is not an input field/);
+    expect(() =>
+      defineOperation({ ...base, name: "get", path: "/x/{id}", input, query: ["locale"], cli: { hidden: ["id"] } }),
+    ).toThrow(/get: hidden field id is required/);
+  });
+
+  it("rejects cli examples that are not ldesk commands", () => {
+    expect(() => defineOperation({ ...base, name: "list", path: "/x", input: {}, cli: { examples: ["list --json"] } })).toThrow(
+      /list: example "list --json" must start with "ldesk "/,
+    );
+  });
+
+  it("requires an escalation to raise the impact and to say when and what", () => {
+    const write = { ...base, method: "POST", impact: "write", name: "create", path: "/x", input: { status: z.string().optional() } } as const;
+    const escalate = { when: (values: Readonly<Record<string, unknown>>) => values.status === "published", condition: "status is published" };
+    expect(() => defineOperation({ ...write, escalate: { ...escalate, impact: "caution", effect: "" } })).toThrow(
+      /create: escalate needs an effect/,
+    );
+    expect(() => defineOperation({ ...write, escalate: { ...escalate, condition: "", impact: "caution", effect: "Goes public." } })).toThrow(
+      /create: escalate needs a condition/,
+    );
+    expect(() =>
+      defineOperation({ ...write, impact: "destructive", effect: "Gone.", escalate: { ...escalate, impact: "caution", effect: "Goes public." } }),
+    ).toThrow(/create: escalate must raise the impact/);
+    const op = { ...write, escalate: { ...escalate, impact: "caution", effect: "Goes public." } } as const;
+    expect(defineOperation(op)).toBe(op);
+  });
 });
 
 describe("defineDomain", () => {
@@ -123,5 +167,13 @@ describe("defineDomain", () => {
         operations: [op("list"), op("list")],
       }),
     ).toThrow(/help-center: duplicate operation list/);
+  });
+
+  it("requires a description for every operation group", () => {
+    const grouped = defineOperation({ ...base, name: "collection_list", group: "collection", path: "/x", input: {} });
+    const domain = { name: "help-center", tool: "libredesk_help_center", toolset: "knowledge", summary: "s", operations: [grouped] } as const;
+    expect(() => defineDomain(domain)).toThrow(/help-center: group collection needs a description in groups/);
+    const described = { ...domain, groups: { collection: "Manage collections." } };
+    expect(defineDomain(described)).toBe(described);
   });
 });

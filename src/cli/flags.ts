@@ -6,7 +6,7 @@
 
 import { readFileSync } from "node:fs";
 import { InputError } from "../errors.js";
-import type { Operation } from "../ops/define.js";
+import type { BooleanFlagText, Operation } from "../ops/define.js";
 import { operationFields, type FieldInfo, type FieldKind } from "../ops/fields.js";
 
 /** One command line flag of an operation. */
@@ -25,6 +25,8 @@ export interface FlagSpec {
   readonly choices?: readonly string[];
   /** True for a repeatable flag that collects its values. */
   readonly array: boolean;
+  /** True when the help leaves the flag out (`cli.hidden`); it is still accepted. */
+  readonly hidden: boolean;
 }
 
 /** `ai_enabled` becomes `ai-enabled`. */
@@ -39,43 +41,68 @@ export function optionKey(field: string): string {
     .reduce((out, word) => out + (word === "" ? "" : word.charAt(0).toUpperCase() + word.slice(1)));
 }
 
-function describe(info: FieldInfo): string {
-  const parts = [info.description];
-  if (info.required) parts.push("(required)");
-  if (info.defaultValue !== undefined) parts.push(`(default: ${String(info.defaultValue)})`);
-  if (info.array) parts.push("(repeatable)");
-  if (info.nullable) parts.push("(null clears it)");
+function joined(...parts: readonly string[]): string {
   return parts.filter((part) => part !== "").join(" ");
 }
 
-function specsFor(info: FieldInfo): FlagSpec[] {
-  const flag = `--${kebab(info.name)}`;
-  const base = {
-    field: info.name,
-    description: describe(info),
-    kind: info.kind,
-    required: info.required,
-    array: info.array,
-    ...(info.enumValues !== undefined ? { choices: info.enumValues } : {}),
-  };
-  if (info.kind === "boolean" && !info.array) {
-    const positive: FlagSpec = { ...base, flags: flag };
-    const negative: FlagSpec = { ...base, flags: `--no-${kebab(info.name)}` };
-    if (info.defaultValue === true) return [negative];
-    return info.defaultValue === undefined ? [positive, negative] : [positive];
-  }
-  return [{ ...base, flags: `${flag} <value>` }];
+function describe(info: FieldInfo): string {
+  return joined(
+    info.description,
+    info.nullable ? "Pass null to clear it." : "",
+    info.required ? "(required)" : "",
+    info.defaultValue !== undefined && !info.description.includes("(default)") ? `(default: ${String(info.defaultValue)})` : "",
+    info.array ? "(repeatable)" : "",
+  );
+}
+
+/** "Do not" plus the first sentence of `description`: "Let AI answer. On by default." gives "Do not let AI answer.". */
+function negated(info: FieldInfo): string {
+  if (info.description === "") return `Turn ${kebab(info.name)} off.`;
+  const first = info.description.split(/(?<=\.)\s/)[0] ?? info.description;
+  return `Do not ${first.charAt(0).toLowerCase()}${first.slice(1)}`;
 }
 
 /**
- * Flags of an operation, in field order. Positional fields are not flags. Booleans get `--x`
- * and `--no-x`; a boolean that defaults to true only needs `--no-x`.
+ * The flags of a boolean field: the one a user actually passes. Default true shows `--no-x`,
+ * default false shows `--x`, and no default (updates, filters, required switches) shows both.
+ */
+function booleanSpecs(info: FieldInfo, base: Omit<FlagSpec, "flags" | "description">, text: BooleanFlagText): FlagSpec[] {
+  const name = kebab(info.name);
+  const on = text.on ?? info.description;
+  const off = text.off ?? negated(info);
+  if (info.defaultValue === true) return [{ ...base, flags: `--no-${name}`, description: joined(off, `(${name} is on by default)`) }];
+  if (info.defaultValue === false) return [{ ...base, flags: `--${name}`, description: joined(on, "(off by default)") }];
+  const required = info.required ? `(this or --no-${name} is required)` : "";
+  return [
+    { ...base, flags: `--${name}`, description: joined(on, required) },
+    { ...base, flags: `--no-${name}`, description: off },
+  ];
+}
+
+function specsFor(info: FieldInfo, op: Operation, hidden: boolean): FlagSpec[] {
+  const base = {
+    field: info.name,
+    kind: info.kind,
+    required: info.required,
+    array: info.array,
+    hidden,
+    ...(info.enumValues !== undefined ? { choices: info.enumValues } : {}),
+  };
+  if (info.kind === "boolean" && !info.array) return booleanSpecs(info, base, op.cli?.flags?.[info.name] ?? {});
+  return [{ ...base, flags: `--${kebab(info.name)} <value>`, description: describe(info) }];
+}
+
+/**
+ * Flags of an operation, in field order. Positional fields are not flags. A boolean gets the flag
+ * a user passes: `--no-x` when it defaults to true, `--x` when it defaults to false, both when it
+ * has no default. Fields listed in `cli.hidden` are marked `hidden`.
  */
 export function flagsFor(op: Operation): FlagSpec[] {
   const positional = new Set<string>(op.positional ?? []);
+  const hidden = new Set<string>(op.cli?.hidden ?? []);
   return operationFields(op)
     .filter((info) => !positional.has(info.name))
-    .flatMap(specsFor);
+    .flatMap((info) => specsFor(info, op, hidden.has(info.name)));
 }
 
 function invalid(field: string, what: string): InputError {

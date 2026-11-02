@@ -6,6 +6,7 @@
 import { readFile } from "node:fs/promises";
 import { Command } from "commander";
 import type { CliDeps } from "../cli/domain-commands.js";
+import { confirmationLine, YES_DESCRIPTION } from "../cli/help.js";
 import { handleCliError } from "../cli/output.js";
 import { withProfile } from "../context.js";
 import { CancelledError, ConfirmationRequiredError, InputError } from "../errors.js";
@@ -58,13 +59,14 @@ async function parseBody(value: string): Promise<unknown> {
 export function registerRequest(program: Command, deps: CliDeps): void {
   program
     .command("request")
-    .description("Send a raw request to the LibreDesk API")
+    .summary("Send a raw request to the LibreDesk API")
+    .description(`Send a raw request to the LibreDesk API.\n\n${confirmationLine("A DELETE request deletes data")}`)
     .argument("<method>", `HTTP method: ${METHODS.join(", ")}`)
     .argument("<path>", "path starting with /api/v1/, or /health")
     .option("--query <key=value>", "query parameter, repeatable", (value: string, previous: string[] = []) => [...previous, value])
     .option("--body <json|@file>", "JSON request body, or @file to read it from a file")
     .option("--json", "print the result as JSON")
-    .option("--yes", "confirm a DELETE without asking")
+    .option("--yes", YES_DESCRIPTION)
     .option("--profile <name>", "use this profile")
     .action(async (methodArg: string, path: string, options: RequestOptions) => {
       try {
