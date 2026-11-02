@@ -51,24 +51,27 @@ Running `ldesk` with no arguments in a terminal starts interactive mode (also `l
 
 ## Conventions
 
-- Flags are the kebab-case field names. Ids that an operation needs go first as arguments, for example `ldesk articles update 12 --title "New title"`.
+- Flags are the kebab-case field names. Ids that an operation needs go first as arguments, for example `ldesk articles update 12 --title "New title"`, and can also be passed as flags (`--id 12`).
+- Boolean flags show the form you pass: `--is-published` where the default is off, `--no-ai-enabled` where it is on, and both on updates.
 - `--json` prints the raw result as JSON. The default output is a table for lists and `key: value` lines for single records.
 - `--profile <name>` picks a profile for one command.
 - Any text or JSON value can be read from a file with `@path`, for example `--content @article.md`. Use `@@` for a value that starts with a literal `@`.
 - `null` clears a field that allows it, for example `--parent-id null`.
 - A required value you leave out is asked for in a terminal and is an error otherwise.
-- Operations that publish, take something offline, cost money or delete data ask for confirmation first. Without a terminal they fail and name `--yes`, which confirms without asking.
+- Operations that publish, take something offline, cost money or delete data ask for confirmation first, and their `--help` says "Asks for confirmation" and when. Without a terminal they fail and name `--yes`, which confirms without asking. `--yes` is listed only on those commands; the others accept it and ignore it.
 - Exit codes: 0 success, 1 error, 130 cancelled. `ldesk status` exits 1 when no profile is set up or the server does not answer.
 
 ## Help center and collections
 
 ```bash
 ldesk help-center create --name "Docs" --slug docs --page-title "Help"
-ldesk help-center collection create 1 --name "Getting started" --is-published
+ldesk help-center collection create 1 --name "Getting started" --is-published --yes
 ldesk help-center collection update 1 5 --parent-id null
 ldesk help-center tree 1
 ldesk help-center toggle 1 --yes
 ```
+
+Creating or updating a collection with `--is-published` or `--no-is-published` asks for confirmation, like `toggle`, because it changes what the public help center shows.
 
 ## Articles
 
@@ -101,7 +104,7 @@ ldesk knowledge faq reject 5
 ldesk knowledge learning set --enabled --yes
 ```
 
-Approving an FAQ suggestion turns it into a snippet. `learning set --enabled` lets LibreDesk mine resolved conversations for suggestions, which costs AI provider calls.
+Approving an FAQ suggestion turns it into a snippet. `learning set --enabled` lets LibreDesk mine resolved conversations for suggestions, which costs AI provider calls, so it asks for confirmation; turning it off does not.
 
 ## Lookups
 
