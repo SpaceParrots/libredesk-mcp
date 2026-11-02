@@ -10,7 +10,10 @@ import {
 } from "../../src/content/markdown.js";
 
 const fixture = (name: string): string =>
-  readFileSync(new URL(`../fixtures/articles/${name}.html`, import.meta.url), "utf8");
+  readFileSync(
+    new URL(`../fixtures/articles/${name}.html`, import.meta.url),
+    "utf8",
+  );
 
 describe("isMarkdownSafe", () => {
   it("accepts the simple and code fixtures", () => {
@@ -18,9 +21,12 @@ describe("isMarkdownSafe", () => {
     expect(isMarkdownSafe(fixture("code"))).toBe(true);
   });
 
-  it.each(["table", "youtube", "styled", "image-attrs"])("rejects the %s fixture", (name) => {
-    expect(isMarkdownSafe(fixture(name))).toBe(false);
-  });
+  it.each(["table", "youtube", "styled", "image-attrs"])(
+    "rejects the %s fixture",
+    (name) => {
+      expect(isMarkdownSafe(fixture(name))).toBe(false);
+    },
+  );
 
   it("matches tag and attribute names case-insensitively", () => {
     expect(isMarkdownSafe('<P>x <A HREF="/a">y</A></P>')).toBe(true);
@@ -39,7 +45,12 @@ describe("isMarkdownSafe", () => {
 
 describe("readArticleContent", () => {
   it("returns markdown for safe html", () => {
-    expect(readArticleContent("<h2>Refunds</h2><p>Within <strong>30</strong> days.</p>", "markdown")).toEqual({
+    expect(
+      readArticleContent(
+        "<h2>Refunds</h2><p>Within <strong>30</strong> days.</p>",
+        "markdown",
+      ),
+    ).toEqual({
       content: "## Refunds\n\nWithin **30** days.",
       content_format: "markdown",
     });
@@ -55,17 +66,24 @@ describe("readArticleContent", () => {
   });
 
   it("names the element and attribute for an offending attribute", () => {
-    expect(readArticleContent(fixture("image-attrs"), "markdown").note).toMatch(/<img width>/);
+    expect(readArticleContent(fixture("image-attrs"), "markdown").note).toMatch(
+      /<img width>/,
+    );
   });
 
   it("returns html input untouched when html is requested", () => {
     const html = fixture("styled");
-    expect(readArticleContent(html, "html")).toEqual({ content: html, content_format: "html" });
+    expect(readArticleContent(html, "html")).toEqual({
+      content: html,
+      content_format: "html",
+    });
   });
 
   it("converts the code fixture to fenced blocks", () => {
     const out = readArticleContent(fixture("code"), "markdown");
-    expect(out.content).toContain("```bash\nnpm install -g @spaceparrots/libredesk-mcp\nldesk --help\n```");
+    expect(out.content).toContain(
+      "```bash\nnpm install -g @spaceparrots/libredesk-mcp\nldesk --help\n```",
+    );
   });
 });
 
@@ -110,32 +128,44 @@ describe("pre handling", () => {
   });
 
   it("accepts pre with a single code text child", () => {
-    expect(isMarkdownSafe('<pre><code class="language-js">a &lt; b</code></pre>')).toBe(true);
+    expect(
+      isMarkdownSafe('<pre><code class="language-js">a &lt; b</code></pre>'),
+    ).toBe(true);
   });
 });
 
 describe("strikethrough", () => {
   it("converts s and del and round-trips", () => {
-    expect(htmlToMarkdown("<p>x <s>old</s> <del>d</del></p>")).toBe("x ~~old~~ ~~d~~");
+    expect(htmlToMarkdown("<p>x <s>old</s> <del>d</del></p>")).toBe(
+      "x ~~old~~ ~~d~~",
+    );
     expect(roundTrip("x ~~old~~ y")).toBe("x ~~old~~ y");
   });
 });
 
 describe("lists", () => {
   it("round-trips nested unordered lists", () => {
-    expect(roundTrip("- a\n  - b\n    - c\n- d")).toBe("- a\n  - b\n    - c\n- d");
+    expect(roundTrip("- a\n  - b\n    - c\n- d")).toBe(
+      "- a\n  - b\n    - c\n- d",
+    );
   });
 
   it("round-trips nested ordered lists", () => {
-    expect(roundTrip("1. a\n   1. b\n   2. c\n2. d")).toBe("1. a\n   1. b\n   2. c\n2. d");
+    expect(roundTrip("1. a\n   1. b\n   2. c\n2. d")).toBe(
+      "1. a\n   1. b\n   2. c\n2. d",
+    );
   });
 
   it("round-trips mixed lists", () => {
-    expect(roundTrip("1. a\n   - b\n   - c\n2. d")).toBe("1. a\n   - b\n   - c\n2. d");
+    expect(roundTrip("1. a\n   - b\n   - c\n2. d")).toBe(
+      "1. a\n   - b\n   - c\n2. d",
+    );
   });
 
   it("never emits whitespace-only lines for tiptap-style nested lists", () => {
-    const md = htmlToMarkdown("<ul><li><p>a</p><ul><li><p>b</p></li></ul></li></ul>");
+    const md = htmlToMarkdown(
+      "<ul><li><p>a</p><ul><li><p>b</p></li></ul></li></ul>",
+    );
     expect(md).not.toMatch(/^[ \t]+$/m);
     expect(md).toContain("- b");
     expect(htmlToMarkdown(markdownToHtml(md))).toBe(md);
@@ -143,6 +173,38 @@ describe("lists", () => {
 
   it("keeps the ol start number", () => {
     expect(roundTrip("3. a\n4. b")).toBe("3. a\n4. b");
+  });
+});
+
+describe("round 2 gaps", () => {
+  it("keeps a hard break inside a list item", () => {
+    const flat = htmlToMarkdown("<ul><li>a<br>b</li></ul>");
+    expect(flat).toBe("- a  \n  b");
+    expect(markdownToHtml(flat)).toContain("<br>");
+    const nested = htmlToMarkdown(
+      "<ul><li>x<ul><li>a<br>b</li></ul></li></ul>",
+    );
+    expect(markdownToHtml(nested)).toContain("<br>");
+    expect(htmlToMarkdown(markdownToHtml(nested))).toBe(nested);
+  });
+
+  it("escapes tildes in plain text", () => {
+    const md = htmlToMarkdown("<p>~~x~~ text</p>");
+    expect(markdownToHtml(md)).toBe("<p>~~x~~ text</p>\n");
+  });
+
+  it("allows the language class only on code inside pre", () => {
+    expect(isMarkdownSafe('<p><code class="language-x">a</code></p>')).toBe(
+      false,
+    );
+    expect(isMarkdownSafe('<pre><code class="language-x">a</code></pre>')).toBe(
+      true,
+    );
+  });
+
+  it("treats empty code as unsafe", () => {
+    expect(isMarkdownSafe("<pre><code></code></pre>")).toBe(false);
+    expect(isMarkdownSafe("<p><code></code></p>")).toBe(false);
   });
 });
 
@@ -166,13 +228,25 @@ describe("links", () => {
   it("round-trips a default link exactly", () => {
     const html = `<p><a href="https://e.com" ${defaults}>x</a></p>`;
     expect(isMarkdownSafe(html)).toBe(true);
-    expect(readArticleContent(html, "markdown").content).toBe("[x](https://e.com)");
-    expect(toArticleHtml("[x](https://e.com)", "markdown")).toContain(`<a ${defaults} href="https://e.com">x</a>`);
+    expect(readArticleContent(html, "markdown").content).toBe(
+      "[x](https://e.com)",
+    );
+    expect(toArticleHtml("[x](https://e.com)", "markdown")).toContain(
+      `<a ${defaults} href="https://e.com">x</a>`,
+    );
   });
 
   it("falls back to html for a non-default target or rel", () => {
-    expect(readArticleContent('<p><a href="/a" target="_self">x</a></p>', "markdown").note).toMatch(/<a target>/);
-    expect(readArticleContent('<p><a href="/a" rel="sponsored">x</a></p>', "markdown").note).toMatch(/<a rel>/);
+    expect(
+      readArticleContent('<p><a href="/a" target="_self">x</a></p>', "markdown")
+        .note,
+    ).toMatch(/<a target>/);
+    expect(
+      readArticleContent(
+        '<p><a href="/a" rel="sponsored">x</a></p>',
+        "markdown",
+      ).note,
+    ).toMatch(/<a rel>/);
   });
 });
 
@@ -184,7 +258,7 @@ describe("other round trips", () => {
       [
         "## Refunds",
         "",
-        "Orders can be returned within **30** days. See the [refund policy](https://example.com/policy \"Policy\").",
+        'Orders can be returned within **30** days. See the [refund policy](https://example.com/policy "Policy").',
         "",
         "- Keep the receipt",
         "- Use the _original_ packaging",
@@ -206,15 +280,33 @@ describe("other round trips", () => {
     const root = parse(html);
     const tags = root
       .querySelectorAll("*")
-      .filter((el) => !(el.rawTagName.toLowerCase() === "p" && el.parentNode?.rawTagName?.toLowerCase() === "li"))
-      .map((el) => el.rawTagName.toLowerCase().replace("del", "s").replace(/^b$/, "strong").replace(/^i$/, "em"))
+      .filter(
+        (el) =>
+          !(
+            el.rawTagName.toLowerCase() === "p" &&
+            el.parentNode?.rawTagName?.toLowerCase() === "li"
+          ),
+      )
+      .map((el) =>
+        el.rawTagName
+          .toLowerCase()
+          .replace("del", "s")
+          .replace(/^b$/, "strong")
+          .replace(/^i$/, "em"),
+      )
       .sort();
     return { text: root.textContent.replace(/\s+/g, ""), tags };
   };
 
-  it.each(["simple", "code"])("%s fixture keeps text and tags through markdown", (name) => {
-    const html = fixture(name);
-    const back = toArticleHtml(readArticleContent(html, "markdown").content, "markdown");
-    expect(structure(back)).toEqual(structure(html));
-  });
+  it.each(["simple", "code"])(
+    "%s fixture keeps text and tags through markdown",
+    (name) => {
+      const html = fixture(name);
+      const back = toArticleHtml(
+        readArticleContent(html, "markdown").content,
+        "markdown",
+      );
+      expect(structure(back)).toEqual(structure(html));
+    },
+  );
 });

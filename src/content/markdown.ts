@@ -18,8 +18,29 @@ export interface ArticleContent {
 }
 
 const ALLOWED_TAGS: ReadonlySet<string> = new Set([
-  "p", "h1", "h2", "h3", "h4", "h5", "h6", "strong", "b", "em", "i", "a", "ul", "ol", "li",
-  "blockquote", "code", "pre", "br", "hr", "img", "s", "del",
+  "p",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "strong",
+  "b",
+  "em",
+  "i",
+  "a",
+  "ul",
+  "ol",
+  "li",
+  "blockquote",
+  "code",
+  "pre",
+  "br",
+  "hr",
+  "img",
+  "s",
+  "del",
 ]);
 
 const ALLOWED_ATTRIBUTES: Readonly<Record<string, readonly string[]>> = {
@@ -43,7 +64,9 @@ const converter = new Marked({
   async: false,
   renderer: {
     link(this: Renderer, token: Tokens.Link): string {
-      return Renderer.prototype.link.call(this, token).replace(/^<a /, `<a ${LINK_ATTRIBUTES} `);
+      return Renderer.prototype.link
+        .call(this, token)
+        .replace(/^<a /, `<a ${LINK_ATTRIBUTES} `);
     },
   },
 });
@@ -54,10 +77,17 @@ const turndown = new TurndownService({
   bulletListMarker: "-",
 });
 
-// Plain text must not turn into tags or entities when marked reads it back.
+// Plain text must not turn into tags, entities or strikethrough when marked reads it back.
+// A backslash escape does not stop marked's gfm strikethrough, so tildes become a numeric entity.
 const defaultEscape = turndown.escape.bind(turndown);
 turndown.escape = (text: string): string =>
-  defaultEscape(text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"));
+  defaultEscape(
+    text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/~/g, "&#126;"),
+  );
 
 turndown.addRule("strikethrough", {
   filter: ["s", "del"],
@@ -78,7 +108,10 @@ turndown.addRule("compactListItem", {
     let prefix = `${options.bulletListMarker} `;
     if (parent?.nodeName === "OL") {
       const start = parent.getAttribute("start");
-      const index = Array.prototype.indexOf.call(parent.children, node) as number;
+      const index = Array.prototype.indexOf.call(
+        parent.children,
+        node,
+      ) as number;
       prefix = `${(start ? Number(start) : 1) + index}. `;
     }
     const indent = " ".repeat(prefix.length);
@@ -86,7 +119,9 @@ turndown.addRule("compactListItem", {
       .replace(/^\n+/, "")
       .replace(/\n+$/, "")
       .split("\n")
-      .map((line, index) => (index === 0 || line.trim() === "" ? line.trimEnd() : indent + line))
+      .map((line, index) =>
+        line.trim() === "" ? "" : index === 0 ? line : indent + line,
+      )
       .join("\n");
     return prefix + body + (node.nextSibling ? "\n" : "");
   },
@@ -104,11 +139,16 @@ export function htmlToMarkdown(html: string): string {
 
 function isLanguageClass(value: string): boolean {
   const classes = value.split(/\s+/).filter(Boolean);
-  return classes.length > 0 && classes.every((cls) => cls.startsWith("language-"));
+  return (
+    classes.length > 0 && classes.every((cls) => cls.startsWith("language-"))
+  );
 }
 
 function hasOnlyText(element: HTMLElement): boolean {
-  return element.childNodes.every((child) => child.nodeType === NodeType.TEXT_NODE);
+  return (
+    element.childNodes.length > 0 &&
+    element.childNodes.every((child) => child.nodeType === NodeType.TEXT_NODE)
+  );
 }
 
 /** A pre block is representable only as a single code element holding plain text. */
@@ -125,7 +165,10 @@ function isPlainCodeBlock(pre: HTMLElement): boolean {
 /** Returns the first element or attribute markdown cannot represent, or undefined when none. */
 function findUnsupported(html: string): string | undefined {
   // Without pre in the list, node-html-parser parses pre contents as real nodes instead of raw text.
-  const root = parse(html, { comment: false, blockTextElements: { script: true, noscript: true, style: true } });
+  const root = parse(html, {
+    comment: false,
+    blockTextElements: { script: true, noscript: true, style: true },
+  });
   for (const element of root.querySelectorAll("*")) {
     const tag = element.rawTagName.toLowerCase();
     if (!ALLOWED_TAGS.has(tag)) return `<${tag}>`;
@@ -138,7 +181,12 @@ function findUnsupported(html: string): string | undefined {
         if (value === LINK_DEFAULTS[name]) continue;
       } else if (allowed.includes(name)) {
         continue;
-      } else if (tag === "code" && name === "class" && isLanguageClass(value)) {
+      } else if (
+        tag === "code" &&
+        name === "class" &&
+        element.parentNode?.rawTagName?.toLowerCase() === "pre" &&
+        isLanguageClass(value)
+      ) {
         continue;
       }
       return `<${tag} ${name}>`;
@@ -158,7 +206,10 @@ export function toArticleHtml(content: string, format: ContentFormat): string {
 }
 
 /** Prepares stored HTML for a caller, falling back to HTML with a note when markdown would lose markup. */
-export function readArticleContent(html: string, format: ContentFormat): ArticleContent {
+export function readArticleContent(
+  html: string,
+  format: ContentFormat,
+): ArticleContent {
   if (format === "html") return { content: html, content_format: "html" };
   const unsupported = findUnsupported(html);
   if (unsupported === undefined) {
