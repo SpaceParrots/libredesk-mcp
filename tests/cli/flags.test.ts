@@ -54,6 +54,14 @@ describe("flags", () => {
     }
   });
 
+  it("accepts null only for nullable fields and mentions it in the help", () => {
+    expect(() => parseFlagValues(sample, { count: "null" }, [])).not.toThrow();
+    expect(parseFlagValues(sample, { count: "null" }, []).count).toBeNull();
+    expect(() => parseFlagValues(sample, { title: "null" }, [])).not.toThrow();
+    expect(parseFlagValues(sample, { title: "null" }, []).title).toBe("null");
+    expect(flagsFor(sample).find((f) => f.field === "count")?.description).toContain("null clears it");
+  });
+
   it("keeps array values", () => {
     expect(parseFlagValues(sample, { allowedLocales: ["en", "de"] }, []).allowed_locales).toEqual(["en", "de"]);
   });

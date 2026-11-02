@@ -24,6 +24,8 @@ export interface FieldInfo {
   readonly enumValues?: readonly string[];
   /** The zod default, when there is one. */
   readonly defaultValue?: unknown;
+  /** True when the field accepts null, which clears it on the server. */
+  readonly nullable: boolean;
   /** True for a list of strings or enum values, entered by repeating the flag. */
   readonly array: boolean;
 }
@@ -35,6 +37,7 @@ interface Unwrapped {
   readonly required: boolean;
   readonly description: string;
   readonly hasDefault: boolean;
+  readonly nullable: boolean;
   readonly defaultValue: unknown;
 }
 
@@ -48,12 +51,14 @@ function unwrap(schema: Schema): Unwrapped {
   let required = true;
   let description = describedAs(current);
   let hasDefault = false;
+  let nullable = false;
   let defaultValue: unknown;
   for (;;) {
     const def = current._zod.def;
     let next: Schema;
     if (def.type === "optional" || def.type === "nullable" || def.type === "readonly") {
       if (def.type === "optional") required = false;
+      if (def.type === "nullable") nullable = true;
       next = (def as z.core.$ZodOptionalDef).innerType;
     } else if (def.type === "default" || def.type === "prefault") {
       const withDefault = def as z.core.$ZodDefaultDef;
@@ -71,7 +76,7 @@ function unwrap(schema: Schema): Unwrapped {
     current = next;
     description ??= describedAs(current);
   }
-  return { inner: current, required, description: description ?? "", hasDefault, defaultValue };
+  return { inner: current, required, description: description ?? "", hasDefault, nullable, defaultValue };
 }
 
 interface Shape {
@@ -100,7 +105,7 @@ function scalarShape(schema: Schema): Shape {
 
 /** Describe one input field. Objects, records and arrays of anything but strings or enums are `json`. */
 export function fieldInfo(name: string, schema: Schema): FieldInfo {
-  const { inner, required, description, hasDefault, defaultValue } = unwrap(schema);
+  const { inner, required, description, hasDefault, nullable, defaultValue } = unwrap(schema);
   let shape = scalarShape(inner);
   let array = false;
   const def = inner._zod.def;
@@ -116,6 +121,7 @@ export function fieldInfo(name: string, schema: Schema): FieldInfo {
     description,
     ...(shape.enumValues !== undefined ? { enumValues: shape.enumValues } : {}),
     ...(hasDefault ? { defaultValue } : {}),
+    nullable,
     array,
   };
 }

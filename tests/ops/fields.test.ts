@@ -4,6 +4,11 @@ import { defineOperation } from "../../src/ops/define.js";
 import { fieldInfo, operationFields } from "../../src/ops/fields.js";
 
 describe("fieldInfo", () => {
+  it("marks nullable fields", () => {
+    expect(fieldInfo("p", z.number().nullable().optional()).nullable).toBe(true);
+    expect(fieldInfo("p", z.number().optional()).nullable).toBe(false);
+  });
+
   it("describes optional enums with defaults", () => {
     expect(fieldInfo("status", z.enum(["draft", "published"]).default("draft").describe("d"))).toMatchObject({
       name: "status",
@@ -22,6 +27,7 @@ describe("fieldInfo", () => {
       kind: "number",
       required: true,
       description: "ID",
+      nullable: false,
       array: false,
     });
     expect(fieldInfo("on", z.boolean())).toMatchObject({ kind: "boolean", required: true, description: "" });

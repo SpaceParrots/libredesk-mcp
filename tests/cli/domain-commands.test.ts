@@ -4,6 +4,7 @@ import { addDomainCommands, type CliDeps } from "../../src/cli/domain-commands.j
 import { getCurrentProfile } from "../../src/context.js";
 import { DOMAINS } from "../../src/domains/index.js";
 import { ConfirmationRequiredError, InputError } from "../../src/errors.js";
+import { runOperation } from "../../src/ops/run.js";
 import type { Operation } from "../../src/ops/define.js";
 import { neverPrompt } from "./helpers.js";
 
@@ -131,6 +132,30 @@ describe("addDomainCommands", () => {
     await exec(h, "articles", "create", "--collection-id", "1");
     expect(h.runs).toHaveLength(0);
     expect(h.errors[0]).toBeInstanceOf(InputError);
+  });
+
+  it("names flags and positionals, not snake_case fields, in input errors", async () => {
+    const h = harness({ run: (op, values) => runOperation(op, { ...(values as object), help_center_id: "abc" }) });
+    await exec(h, "help-center", "collection", "create", "--help-center-id", "1", "--name", "FAQ");
+    const error = h.errors[0] as InputError;
+    expect(error).toBeInstanceOf(InputError);
+    expect(error.message).toContain("<help-center-id>");
+    expect(error.message).not.toContain("help_center_id");
+    expect(error.message).toContain("ldesk help-center collection create");
+    expect(error.hint).toContain("--help");
+    expect(error.hint).not.toContain("help_center_id");
+  });
+
+  it("accepts null for nullable fields", async () => {
+    const h = harness();
+    await exec(h, "help-center", "collection", "update", "5", "--help-center-id", "1", "--parent-id", "null");
+    expect(h.runs[0]?.values.parent_id).toBeNull();
+  });
+
+  it("fills positionals only into slots not given as flags", async () => {
+    const h = harness();
+    await exec(h, "help-center", "collection", "update", "--help-center-id", "1", "5", "--name", "x");
+    expect(h.runs[0]?.values).toMatchObject({ help_center_id: 1, id: 5, name: "x" });
   });
 
   it("help shows summary, undocumented marker and effect", () => {

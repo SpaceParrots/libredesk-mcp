@@ -7,6 +7,7 @@
 
 import { Command, InvalidArgumentError, Option } from "commander";
 import { withProfile } from "../context.js";
+import { InputError } from "../errors.js";
 import type { Domain, Operation } from "../ops/define.js";
 import { operationFields } from "../ops/fields.js";
 import type { runOperation } from "../ops/run.js";
@@ -71,6 +72,29 @@ function optionsFor(op: Operation): Option[] {
   return options;
 }
 
+function commandPath(command: Command): string {
+  const names: string[] = [];
+  for (let c: Command | null = command; c?.parent; c = c.parent) names.unshift(c.name());
+  return ["ldesk", ...names].join(" ");
+}
+
+function escapeRegExp(text: string): string {
+  return text.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Rewrite an input error from the operation core (snake_case field names) into CLI terms. */
+function cliInputError(error: InputError, op: Operation, command: Command): InputError {
+  const positional = new Set<string>(op.positional ?? []);
+  const path = commandPath(command);
+  let message = error.message.replace(`for ${op.name}`, `for \`${path}\``);
+  for (const field of error.fields) {
+    const flag = positional.has(field) ? `<${kebab(field)}>` : `--${kebab(field)}`;
+    message = message.replaceAll(new RegExp(`(^|[:;] )${escapeRegExp(field)}(?=[:.]|$)`, "g"), `$1${flag}`);
+  }
+  const hint = error.hint === undefined || error.hint.startsWith("Fields of ") ? `Run \`${path} --help\` for the options.` : error.hint;
+  return new InputError(message, { fields: error.fields, hint });
+}
+
 function buildCommand(op: Operation, name: string, deps: CliDeps): Command {
   const clash = Object.keys(op.input).find((key) => RESERVED.has(key));
   if (clash) throw new Error(`${op.name}: input field ${clash} clashes with the --${clash} flag`);
@@ -100,7 +124,7 @@ function buildCommand(op: Operation, name: string, deps: CliDeps): Command {
       const result = await withProfile(profile, () => deps.run(op, values));
       deps.print(result, { json: options.json === true });
     } catch (error) {
-      (deps.onError ?? handleCliError)(error);
+      (deps.onError ?? handleCliError)(error instanceof InputError ? cliInputError(error, op, command) : error);
     }
   });
   return command;

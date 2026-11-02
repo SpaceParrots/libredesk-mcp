@@ -44,6 +44,7 @@ function describe(info: FieldInfo): string {
   if (info.required) parts.push("(required)");
   if (info.defaultValue !== undefined) parts.push(`(default: ${String(info.defaultValue)})`);
   if (info.array) parts.push("(repeatable)");
+  if (info.nullable) parts.push("(null clears it)");
   return parts.filter((part) => part !== "").join(" ");
 }
 
@@ -77,42 +78,40 @@ export function flagsFor(op: Operation): FlagSpec[] {
     .flatMap(specsFor);
 }
 
-function invalid(op: Operation, field: string, what: string): InputError {
-  return new InputError(`Invalid value for --${kebab(field)}: ${what}.`, {
-    fields: [field],
-    hint: `Fields of ${op.name}: ${Object.keys(op.input).join(", ")}.`,
-  });
+function invalid(field: string, what: string): InputError {
+  return new InputError(`Invalid value for --${kebab(field)}: ${what}.`, { fields: [field] });
 }
 
-function readFileValue(op: Operation, field: string, raw: string, readFile: (path: string) => string): string {
+function readFileValue(field: string, raw: string, readFile: (path: string) => string): string {
   if (!raw.startsWith("@")) return raw;
   if (raw.startsWith("@@")) return raw.slice(1);
   const path = raw.slice(1);
   try {
     return readFile(path);
   } catch {
-    throw invalid(op, field, `cannot read the file ${path}`);
+    throw invalid(field, `cannot read the file ${path}`);
   }
 }
 
-function coerce(op: Operation, info: FieldInfo, raw: unknown, readFile: (path: string) => string): unknown {
+function coerce(info: FieldInfo, raw: unknown, readFile: (path: string) => string): unknown {
   if (info.kind === "boolean") {
     if (typeof raw === "boolean") return raw;
-    throw invalid(op, info.name, "expected true or false");
+    throw invalid(info.name, "expected true or false");
   }
   if (typeof raw !== "string") return raw;
+  if (info.nullable && raw === "null") return null;
   if (info.kind === "number") {
     const number = raw.trim() === "" ? Number.NaN : Number(raw);
-    if (Number.isNaN(number)) throw invalid(op, info.name, "expected a number");
+    if (Number.isNaN(number)) throw invalid(info.name, "expected a number");
     return number;
   }
   if (info.kind === "enum") return raw;
-  const text = readFileValue(op, info.name, raw, readFile);
+  const text = readFileValue(info.name, raw, readFile);
   if (info.kind === "string") return text;
   try {
     return JSON.parse(text) as unknown;
   } catch {
-    throw invalid(op, info.name, "expected valid JSON");
+    throw invalid(info.name, "expected valid JSON");
   }
 }
 
@@ -133,13 +132,17 @@ export function parseFlagValues(
   const values: Record<string, unknown> = {};
   const set = (info: FieldInfo, raw: unknown) => {
     if (raw === undefined) return;
-    if (Array.isArray(raw)) values[info.name] = raw.map((item) => coerce(op, info, item, readFile));
-    else values[info.name] = info.array ? [coerce(op, info, raw, readFile)] : coerce(op, info, raw, readFile);
+    if (Array.isArray(raw)) values[info.name] = raw.map((item) => coerce(info, item, readFile));
+    else values[info.name] = info.array ? [coerce(info, raw, readFile)] : coerce(info, raw, readFile);
   };
-  positional.forEach((name, index) => {
+  // Positionals fill, in order, the slots that were not given as flags.
+  const free = positional.filter((name) => options[optionKey(name)] === undefined);
+  for (const name of positional) {
     const info = fields.get(name);
-    if (info) set(info, positionals[index] ?? options[optionKey(name)]);
-  });
+    if (!info) continue;
+    const slot = free.indexOf(name);
+    set(info, slot >= 0 ? positionals[slot] : options[optionKey(name)]);
+  }
   for (const info of fields.values()) {
     if (!positional.includes(info.name)) set(info, options[optionKey(info.name)]);
   }
