@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { Profile } from "../../src/config.js";
 import { InputError, PermissionError } from "../../src/errors.js";
@@ -60,9 +60,20 @@ const getOp = defineOperation({
   summary: "s",
   method: "GET",
   path: "/api/v1/things/{id}",
-  input: { id: z.string(), page: z.number().default(1), extra: z.string().optional() },
+  input: { id: z.string(), page: z.number().default(1) },
   query: ["page"],
   impact: "read",
+});
+
+const deleteOp = defineOperation({
+  name: "delete",
+  summary: "s",
+  method: "DELETE",
+  path: "/api/v1/things/{id}",
+  input: { id: z.number(), force: z.boolean().optional() },
+  query: ["force"],
+  impact: "destructive",
+  effect: "Deletes the thing.",
 });
 
 describe("splitInput", () => {
@@ -86,8 +97,16 @@ describe("splitInput", () => {
     });
   });
 
-  it("never sends a body for GET or DELETE", () => {
-    expect(splitInput(getOp, { id: "x", page: 2, extra: "y" }).body).toBeUndefined();
+  it("omits null and undefined query values", () => {
+    expect(splitInput(op, { help_center_id: 1, id: 2, locale: null }).query).toEqual({});
+    expect(splitInput(op, { help_center_id: 1, id: 2, locale: undefined }).query).toEqual({});
+  });
+
+  it("throws an InputError naming a missing path param", () => {
+    const error = thrown(() => splitInput(op, { id: 2 })) as InputError;
+    expect(error).toBeInstanceOf(InputError);
+    expect(error.fields).toEqual(["help_center_id"]);
+    expect(error.message).toMatch(/help_center_id/);
   });
 });
 
@@ -107,6 +126,21 @@ describe("validateInput", () => {
     expect(error.message).toMatch(/\bid: /);
   });
 
+  it("reports unknown keys of a nested strict object under the parent field", () => {
+    const nested = defineOperation({
+      name: "create",
+      summary: "s",
+      method: "POST",
+      path: "/x",
+      input: { meta: z.object({ a: z.string() }).strict() },
+      impact: "write",
+    });
+    const error = thrown(() => validateInput(nested, { meta: { a: "x", b: 1 } })) as InputError;
+    expect(error).toBeInstanceOf(InputError);
+    expect(error.fields).toEqual(["meta"]);
+    expect(error.message).toMatch(/meta\.b: unknown field/);
+  });
+
   it("treats undefined and null as empty input and applies defaults", () => {
     const noInput = defineOperation({
       name: "list",
@@ -123,6 +157,10 @@ describe("validateInput", () => {
 });
 
 describe("runOperation", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("sends the default request and unwraps the envelope", async () => {
     const { fetchImpl, calls } = fakeFetch(200, { status: "success", data: { id: 2 } });
     const result = await runOperation(op, { help_center_id: 1, id: 2, name: "FAQ", locale: "de" }, { profile, fetchImpl });
@@ -136,6 +174,21 @@ describe("runOperation", () => {
     const { fetchImpl, calls } = fakeFetch(200, { status: "success", data: [] });
     await runOperation(getOp, { id: "x" }, { profile, fetchImpl });
     expect(calls[0]?.url).toBe("https://ex.com/api/v1/things/x?page=1");
+  });
+
+  it("sends no body for DELETE", async () => {
+    const { fetchImpl, calls } = fakeFetch(200, { status: "success", data: true });
+    await runOperation(deleteOp, { id: 3, force: true }, { profile, fetchImpl });
+    expect(calls).toEqual([{ url: "https://ex.com/api/v1/things/3?force=true", method: "DELETE", body: undefined }]);
+  });
+
+  it("falls back to the current profile when deps.profile is absent", async () => {
+    vi.stubEnv("LIBREDESK_URL", "https://env.example/helpdesk/");
+    vi.stubEnv("LIBREDESK_API_KEY", "envkey");
+    vi.stubEnv("LIBREDESK_API_SECRET", "envsecret");
+    const { fetchImpl, calls } = fakeFetch(200, { status: "success", data: [] });
+    await runOperation(getOp, { id: "x" }, { fetchImpl });
+    expect(calls[0]?.url).toBe("https://env.example/helpdesk/api/v1/things/x?page=1");
   });
 
   it("rejects invalid input before any request", async () => {

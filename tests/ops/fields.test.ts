@@ -69,6 +69,7 @@ describe("operationFields", () => {
       method: "GET",
       path: "/x/{id}",
       input: { id: z.number(), locale: z.string().optional() },
+      query: ["locale"],
       impact: "read",
     });
     expect(operationFields(op).map((f) => [f.name, f.kind, f.required])).toEqual([

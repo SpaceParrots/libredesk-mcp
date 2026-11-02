@@ -52,6 +52,40 @@ describe("defineOperation", () => {
     expect(op.effect).toMatch(/Deletes/);
   });
 
+  it("rejects a path param that is optional without a default", () => {
+    expect(() =>
+      defineOperation({ ...base, name: "get", path: "/x/{id}", input: { id: z.number().optional() } }),
+    ).toThrow("get: path param {id} must not be optional");
+    const op = defineOperation({ ...base, name: "get", path: "/x/{id}", input: { id: z.number().default(0) } });
+    expect(op.path).toBe("/x/{id}");
+  });
+
+  it("rejects GET and DELETE fields that are neither path params nor query fields", () => {
+    for (const method of ["GET", "DELETE"] as const) {
+      expect(() =>
+        defineOperation({
+          ...base,
+          name: "get",
+          method,
+          path: "/x/{id}",
+          input: { id: z.number(), page: z.number().optional(), extra: z.string().optional() },
+          query: ["page"],
+        }),
+      ).toThrow(`get: ${method} field extra is neither a path param nor a query field`);
+    }
+  });
+
+  it("allows extra GET fields when the operation has its own run", () => {
+    const op = defineOperation({
+      ...base,
+      name: "search",
+      path: "/x",
+      input: { term: z.string() },
+      run: async (input) => input.term,
+    });
+    expect(op.name).toBe("search");
+  });
+
   it("requires grouped names to carry the group prefix", () => {
     expect(() => defineOperation({ ...base, name: "create", group: "collection", path: "/x", input: {} })).toThrow(
       /create: .*collection_/,
