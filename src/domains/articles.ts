@@ -59,11 +59,8 @@ const content = z
 
 /** Optional fields shared by article create and update. */
 const articleSettings = {
-  slug: z.string().optional().describe("Ignored."),
-  locale: z
-    .string()
-    .optional()
-    .describe('Locale code, "en" by default; must match the collection.'),
+  slug: z.string().optional().describe("Ignored; LibreDesk makes the slug from the title."),
+  locale: z.string().optional().describe("Locale code; must match the collection's locale."),
   excerpt: z.string().optional().describe("Short summary for lists and search."),
   meta_title: z.string().optional().describe("SEO title."),
   meta_description: z.string().optional().describe("SEO description."),
@@ -161,7 +158,7 @@ const get = defineOperation({
   run: async (input, ctx) =>
     presentArticle(await ctx.call("GET", `/api/v1/collections/${input.collection_id}/articles/${input.id}`), input.format),
   cli: {
-    notes: ["Prints the content as markdown; --format html prints the stored HTML. Content markdown cannot express comes back as HTML with content_format: html."],
+    notes: ["Prints the whole article with its content as markdown; --format html prints the content as the stored HTML instead. Content markdown cannot express comes back as HTML with content_format: html."],
     examples: ["ldesk articles get 42", "ldesk articles get 42 --format html", "ldesk articles get 42 --json"],
     hidden: ["collection_id"],
   },
@@ -194,8 +191,10 @@ const create = defineOperation({
   cli: {
     notes: [
       "New articles are drafts. --status published makes the article public at once (asks for confirmation); AI assistants answer from published articles unless --no-ai-enabled is given.",
+      'Without --locale the article is "en". For a collection in another locale pass its locale, which `ldesk help-center collection list <help-center-id>` prints.',
       "Read long content from a file with --content @file.md.",
     ],
+    hidden: ["slug"],
     examples: [
       'ldesk articles create 7 --title "Refund policy" --content @refunds.md',
       'ldesk articles create 7 --title "Refund policy" --content @refunds.md --status published --yes',
@@ -230,6 +229,7 @@ const update = defineOperation({
   cli: {
     notes: ["Only the given fields change. Publish or unpublish with `ldesk articles set-status`, move with `ldesk articles move`."],
     examples: ['ldesk articles update 42 --title "Refunds"', "ldesk articles update 42 --content @refunds.md", "ldesk articles update 42 --no-ai-enabled"],
+    hidden: ["slug"],
   },
 });
 

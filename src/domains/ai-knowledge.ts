@@ -89,6 +89,7 @@ const snippetList = defineOperation({
   cli: {
     notes: [
       "Prints id, title, enabled, source, source_url, updated_at and a preview of the content; the table shows the first six, --json all of them.",
+      "Lists every snippet in one call, with no paging. Without --enabled or --no-enabled it lists both enabled and disabled ones.",
       "Read the full content with `ldesk knowledge snippet get <id>`.",
     ],
     examples: ["ldesk knowledge snippet list", "ldesk knowledge snippet list --json", "ldesk knowledge snippet list --search refund --no-enabled"],

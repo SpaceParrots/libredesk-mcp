@@ -15,7 +15,7 @@ export function registerStatus(program: Command, deps: CliDeps): void {
     .command("status")
     .summary("Show the profile in effect and whether the server is reachable")
     .description(
-      "Show the profile in effect and whether the server is reachable.\n\nExits 0 when the server is reachable. Exits 1 when no profile is set up (with an error) or the server is not reachable (after printing the report).",
+      "Show the profile in effect and whether the server is reachable.\n\nPrints the profile and where it came from, the server URL, the masked API key, the agent the key belongs to, and whether the server answered.\n\nExits 0 when the server is reachable. Exits 1 when no profile is set up (with an error) or the server is not reachable (after printing the report).",
     )
     .option("--json", "print the result as JSON")
     .option("--profile <name>", "use this profile")
