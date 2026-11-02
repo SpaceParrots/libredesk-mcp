@@ -116,7 +116,24 @@ describe.skipIf(!liveProfile() || !writesAllowed())("articles against local Libr
 
     const dir = await mkdtemp(join(tmpdir(), "ldesk-sync-"));
     try {
-      const file = ["---", "excerpt: From a file", "---", "# Synced", "", "Write to support@example.com or see [docs](https://example.com).", "", "* one", "* two", ""];
+      const file = [
+        "---",
+        "excerpt: From a file",
+        "---",
+        "# Synced",
+        "",
+        "Write to support@example.com or see [docs](https://example.com).",
+        "",
+        "* one",
+        "* two",
+        "",
+        "| Plan | Price |",
+        "| --- | ---: |",
+        "| Basic | [5 EUR](https://example.com/basic) |",
+        "",
+        "- [ ] a task",
+        "",
+      ];
       await writeFile(join(dir, "synced.md"), file.join("\n"));
       const created = (await art("sync", { path: dir, collection_id: en2.id })) as { created: number; files: { id: number }[] };
       expect(created.created).toBe(1);

@@ -8,7 +8,7 @@
 
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, extname, join, resolve } from "node:path";
-import { readArticleContent, toArticleHtml, htmlToMarkdown, markdownToHtml, type ContentFormat } from "../content/markdown.js";
+import { canonicalHtml, readArticleContent, toArticleHtml, htmlToMarkdown, markdownToHtml, type ContentFormat } from "../content/markdown.js";
 import { parseFrontmatter, setFrontmatterField, type FrontmatterValue } from "../content/frontmatter.js";
 import { ARTICLE_KEYS, NO_COLLECTION } from "../domains/article-record.js";
 import { InputError, toLibreDeskError } from "../errors.js";
@@ -120,13 +120,25 @@ function canonical(content: string, format: ContentFormat): string {
   return format === "markdown" ? htmlToMarkdown(markdownToHtml(content)) : content.trim();
 }
 
+/**
+ * Whether the stored HTML already says what the file says. Markdown that reads back as markdown is
+ * compared as markdown; anything else (tables, task lists, html files) as canonical HTML, so
+ * the attributes LibreDesk's sanitizer adds do not count as a change.
+ */
+function sameContent(local: LocalArticle, stored: string): boolean {
+  if (local.format === "markdown") {
+    const read = readArticleContent(stored, "markdown");
+    if (read.content_format === "markdown" && canonical(read.content, "markdown") === canonical(local.content, "markdown")) return true;
+  }
+  return canonicalHtml(stored) === canonicalHtml(toArticleHtml(local.content, local.format));
+}
+
 /** The fields of `local` that differ from the server's `current` article. */
 export function changedFields(local: LocalArticle, current: Readonly<Record<string, unknown>>): string[] {
   const changed: string[] = [];
   if (local.title !== current.title) changed.push("title");
   const stored = typeof current.content === "string" ? current.content : "";
-  const read = local.format === "markdown" ? readArticleContent(stored, "markdown") : { content: stored, content_format: "html" as const };
-  if (read.content_format !== local.format || canonical(read.content, local.format) !== canonical(local.content, local.format)) changed.push("content");
+  if (!sameContent(local, stored)) changed.push("content");
   for (const [key, value] of Object.entries(local.settings)) if (current[key] !== value) changed.push(key);
   return changed;
 }

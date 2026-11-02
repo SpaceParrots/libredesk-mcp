@@ -114,6 +114,28 @@ describe("syncArticles", () => {
     expect(files.get(join(DIR, "a-new.md"))).toBe("---\nid: 101\nexcerpt: Short\n---\n# New one\n\nHello **there**");
   });
 
+  it("sees no change in a table or an html file after the sanitizer touched it", async () => {
+    const table = "| a | b |\n| --- | --- |\n| 1 | [x](https://x.example) |";
+    const html = '<p>See <a href="https://x.example">x</a> &amp; more.</p>';
+    const { fs } = memoryFs({ "a.md": `---\nid: 5\ntitle: T\n---\n${table}`, "b.md": `---\nid: 6\ntitle: H\nformat: html\n---\n${html}` });
+    const sanitize = (text: string) => text.replace(/<a href="([^"]+)"[^>]*>/g, '<a href="$1" rel="nofollow noopener" target="_blank">').replace(/></g, ">\n<");
+    const { ctx, calls } = server({
+      5: stored(5, "T", table, { content: sanitize(markdownToHtml(table)) }),
+      6: stored(6, "H", "x", { content: sanitize(html).replace("&amp;", "&#38;") }),
+    });
+    const result = await syncArticles({ path: DIR, dryRun: false }, ctx, fs);
+    expect(result.files.map((f) => f.action)).toEqual(["unchanged", "unchanged"]);
+    expect(calls.every((c) => c.method === "GET")).toBe(true);
+  });
+
+  it("still sees a changed table cell", async () => {
+    const before = "| a |\n| --- |\n| 1 |";
+    const { fs } = memoryFs({ "a.md": `---\nid: 5\ntitle: T\n---\n${before.replace("1", "2")}` });
+    const { ctx } = server({ 5: stored(5, "T", before) });
+    const result = await syncArticles({ path: DIR, dryRun: true }, ctx, fs);
+    expect(result.files).toEqual([{ file: "a.md", action: "would update", id: 5, changed: ["content"] }]);
+  });
+
   it("writes nothing on a dry run", async () => {
     const { fs, files } = memoryFs({ "a.md": "# A\n\nx", "b.md": "---\nid: 6\ntitle: New\n---\nBody" });
     const before = new Map(files);

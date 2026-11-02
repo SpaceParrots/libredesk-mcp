@@ -210,6 +210,43 @@ export function isMarkdownSafe(html: string): boolean {
   return findUnsupported(html) === undefined;
 }
 
+/** Elements LibreDesk's sanitizer removes, such as the checkbox of a markdown task list. */
+const DROPPED_BY_SANITIZER: ReadonlySet<string> = new Set(["input"]);
+
+const BLOCK_TAGS = "p|h[1-6]|ul|ol|li|blockquote|pre|table|thead|tbody|tfoot|tr|th|td|hr|br|div";
+
+const BLOCK_TAG_SPACE = new RegExp(` ?(</?(?:${BLOCK_TAGS})(?: [^>]*)?>) ?`, "g");
+
+function canonicalNode(node: HTMLElement, inPre = false): string {
+  const inner = node.childNodes
+    .map((child) => {
+      if (child.nodeType === NodeType.TEXT_NODE) return inPre ? child.text : child.text.replace(/\s+/g, " ");
+      if (child.nodeType !== NodeType.ELEMENT_NODE) return "";
+      const element = child as HTMLElement;
+      const tag = element.rawTagName.toLowerCase();
+      if (DROPPED_BY_SANITIZER.has(tag)) return "";
+      const attributes = Object.entries(element.attributes)
+        .map(([name, value]) => [name.toLowerCase(), value] as const)
+        .filter(([name, value]) => !(tag === "a" && (name === "target" || (name === "rel" && isDefaultRel(value)))))
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([name, value]) => ` ${name}=${JSON.stringify(value)}`)
+        .join("");
+      return `<${tag}${attributes}>${canonicalNode(element, inPre || tag === "pre")}</${tag}>`;
+    })
+    .join("");
+  // Whitespace next to a block tag does not change what a reader sees; next to an inline tag it does.
+  return inPre ? inner : inner.replace(BLOCK_TAG_SPACE, "$1");
+}
+
+/**
+ * HTML reduced to its structure and text, for telling whether two article bodies say the same:
+ * entities decoded, whitespace collapsed, attributes sorted, and the link `target` and `rel`
+ * that LibreDesk's sanitizer adds left out.
+ */
+export function canonicalHtml(html: string): string {
+  return canonicalNode(parse(html, { comment: false, blockTextElements: { script: true, noscript: true, style: true } })).trim();
+}
+
 /** Prepares caller content for storage: markdown becomes HTML, HTML passes through. */
 export function toArticleHtml(content: string, format: ContentFormat): string {
   return format === "markdown" ? markdownToHtml(content) : content;

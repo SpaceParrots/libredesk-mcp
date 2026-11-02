@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { parse } from "node-html-parser";
 import { describe, expect, it } from "vitest";
 import {
+  canonicalHtml,
   htmlToMarkdown,
   isMarkdownSafe,
   markdownToHtml,
@@ -14,6 +15,27 @@ const fixture = (name: string): string =>
     new URL(`../fixtures/articles/${name}.html`, import.meta.url),
     "utf8",
   );
+
+describe("canonicalHtml", () => {
+  it("ignores sanitizer link attributes, entity spelling, attribute order and whitespace between tags", () => {
+    expect(canonicalHtml(['<p>A <a title="t" href="https://x.example">x</a> &amp; b</p>', "<ul><li>one</li></ul>"].join("\n"))).toBe(
+      canonicalHtml(['<p>A  <a href="https://x.example" target="_blank" rel="nofollow noopener" title="t">x</a> &#38; b</p><ul>', "<li>one</li>", "</ul>"].join("\n")),
+    );
+  });
+
+  it("ignores the task list checkboxes the sanitizer strips", () => {
+    expect(canonicalHtml(markdownToHtml("- [ ] a task"))).toBe(canonicalHtml("<ul><li>a task</li></ul>"));
+  });
+
+  it("keeps text, structure, other attributes and code block whitespace", () => {
+    expect(canonicalHtml("<p>one</p>")).not.toBe(canonicalHtml("<p>two</p>"));
+    expect(canonicalHtml("<p><strong>x</strong></p>")).not.toBe(canonicalHtml("<p><em>x</em></p>"));
+    expect(canonicalHtml('<a href="https://a.example">x</a>')).not.toBe(canonicalHtml('<a href="https://b.example">x</a>'));
+    expect(canonicalHtml('<a href="/x" rel="sponsored">x</a>')).not.toBe(canonicalHtml('<a href="/x">x</a>'));
+    expect(canonicalHtml("<p>a <strong>b</strong></p>")).not.toBe(canonicalHtml("<p>a<strong>b</strong></p>"));
+    expect(canonicalHtml(["<pre><code>a", "  b</code></pre>"].join("\n"))).not.toBe(canonicalHtml(["<pre><code>a", " b</code></pre>"].join("\n")));
+  });
+});
 
 describe("isMarkdownSafe", () => {
   it("accepts the simple and code fixtures", () => {
