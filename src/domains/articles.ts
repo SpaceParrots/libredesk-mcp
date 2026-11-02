@@ -34,50 +34,50 @@ const ARTICLE_KEYS = [
 
 const NO_COLLECTION = 0;
 
-const articleId = z.number().int().positive().describe("Numeric id of the article. Find it with the list action.");
-const collectionId = z.number().int().positive().describe("Numeric id of the collection. Find it with the help-center tree or collection_list.");
-const helpCenterId = z.number().int().positive().describe("Numeric id of the help center. Find it with the help-center list action.");
+const articleId = z.number().int().positive().describe("Article id.");
+const collectionId = z.number().int().positive().describe("Collection id.");
+const helpCenterId = z.number().int().positive().describe("Help center id.");
 
 const formatField = z
   .enum(["markdown", "html"])
   .describe(
-    'Format of content. "markdown" (default) is GitHub-flavoured markdown that is stored as HTML. Links get LibreDesk editor defaults (open in a new tab, rel noopener noreferrer nofollow). In markdown a literal tilde is shown as &#126; (write it back the same way) and ~~x~~ is strikethrough. Use "html" for markup markdown cannot express, such as tables.',
+    'Content format: "markdown" (default) or "html" for what markdown cannot express, such as tables.',
   );
 
 const pathCollectionId = z
   .number()
   .int()
   .default(NO_COLLECTION)
-  .describe("Collection of the article. LibreDesk ignores it when it looks the article up by id, so leave it out.");
+  .describe("Leave it out.");
 
-const title = z.string().describe("Title of the article. Required, not empty.");
+const title = z.string().describe("Article title.");
 const content = z
   .string()
   .describe(
-    "Body of the article in the given format. Required, not empty. In markdown a literal tilde is shown as &#126; when read, write it back as &#126;; ~~x~~ is strikethrough.",
+    "Article body. In markdown a literal tilde reads as &#126;; write it back as is. ~~x~~ is strikethrough.",
   );
 
 /** Optional fields shared by article create and update. */
 const articleSettings = {
-  slug: z.string().optional().describe("Ignored by LibreDesk 2.9.2: the slug is generated from the title on create and kept unchanged on update."),
+  slug: z.string().optional().describe("Ignored."),
   locale: z
     .string()
     .optional()
-    .describe('Locale code of the article, for example "en". Must be an allowed locale of the help center and match the collection locale. Defaults to "en".'),
-  excerpt: z.string().optional().describe("Short summary shown in lists and search results."),
-  meta_title: z.string().optional().describe("Title for search engines."),
-  meta_description: z.string().optional().describe("Description for search engines."),
-  meta_image_url: z.string().optional().describe("URL of the social preview image."),
-  sort_order: z.number().int().optional().describe("Position among the articles of the collection, lowest first. Use reorder to set many at once."),
+    .describe('Locale code, "en" by default; must match the collection.'),
+  excerpt: z.string().optional().describe("Short summary for lists and search."),
+  meta_title: z.string().optional().describe("SEO title."),
+  meta_description: z.string().optional().describe("SEO description."),
+  meta_image_url: z.string().optional().describe("Social preview image URL."),
+  sort_order: z.number().int().optional().describe("Position in the collection, lowest first."),
 };
 
 const aiEnabled = z
   .boolean()
   .describe(
-    "Whether AI assistants may use the article as an answer source. Defaults to true here (LibreDesk's own form defaults to false), because this tool exists to feed the AI. Customers still see nothing until the status is published.",
+    "Let AI assistants answer from the article once published. Default true.",
   );
 
-const status = z.enum(["draft", "published"]).describe('Status of the article: "draft" (not public) or "published".');
+const status = z.enum(["draft", "published"]).describe('"draft" (not public) or "published".');
 
 function asRecords(data: unknown): Record<string, unknown>[] {
   return Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
@@ -115,13 +115,13 @@ function flattenTree(nodes: unknown, collectionFilter: number | undefined): Reco
 
 const list = defineOperation({
   name: "list",
-  summary: "List the articles of a help center, without content.",
+  summary: "List a help center's articles, without content.",
   method: "GET",
   path: "/api/v1/help-centers/{help_center_id}/tree",
   input: {
     help_center_id: helpCenterId,
-    locale: z.string().optional().describe('Only list articles in this locale, for example "en". Omit for all locales.'),
-    collection_id: collectionId.optional().describe("Only list the articles of this collection."),
+    locale: z.string().optional().describe('Only this locale; omit for all.'),
+    collection_id: collectionId.optional().describe("Only this collection."),
   },
   positional: ["help_center_id"],
   impact: "read",
@@ -137,7 +137,7 @@ const list = defineOperation({
 
 const get = defineOperation({
   name: "get",
-  summary: "Get one article with its content (markdown by default) and its translations.",
+  summary: "Get one article with content and translations.",
   method: "GET",
   path: "/api/v1/collections/{collection_id}/articles/{id}",
   input: {
@@ -155,7 +155,7 @@ const get = defineOperation({
 
 const create = defineOperation({
   name: "create",
-  summary: "Create an article in a collection. It is a draft until set_status publishes it.",
+  summary: "Create an article in a collection, as draft until set_status publishes it.",
   method: "POST",
   path: "/api/v1/collections/{collection_id}/articles",
   input: {
@@ -180,7 +180,7 @@ const create = defineOperation({
 
 const update = defineOperation({
   name: "update",
-  summary: "Change an article. Fields you leave out keep their value. To publish or unpublish use set_status; to move use move.",
+  summary: "Change only the given fields of an article. Publish with set_status, move with move.",
   method: "PUT",
   path: "/api/v1/articles/{id}",
   input: {
@@ -211,17 +211,17 @@ const setStatus = defineOperation({
   input: { id: articleId, status },
   positional: ["id"],
   impact: "caution",
-  effect: "Publishing makes the article public and available to AI assistants when ai_enabled is on.",
+  effect: "Publishing makes the article public, and AI-usable when ai_enabled is on.",
   permission: PERMISSION,
   undocumented: true,
 });
 
 const move = defineOperation({
   name: "move",
-  summary: "Move an article to another collection of the same help center.",
+  summary: "Move an article to another collection of its help center.",
   method: "PUT",
   path: "/api/v1/articles/{id}/collection",
-  input: { id: articleId, collection_id: collectionId.describe("Id of the target collection.") },
+  input: { id: articleId, collection_id: collectionId.describe("Target collection id.") },
   positional: ["id"],
   impact: "write",
   permission: PERMISSION,
@@ -230,14 +230,14 @@ const move = defineOperation({
 
 const reorder = defineOperation({
   name: "reorder",
-  summary: "Set the sort order of several articles of a collection at once.",
+  summary: "Sort many articles of a collection at once.",
   method: "PUT",
   path: "/api/v1/collections/{collection_id}/article-sort-order",
   input: {
     collection_id: collectionId,
     order: z
       .record(z.string(), z.number().int())
-      .describe('Map of article id to position, lowest first, for example {"11":0,"14":1}. Keys are article ids as strings.'),
+      .describe('Map of article id to position, for example {"11":0,"14":1}.'),
   },
   positional: ["collection_id"],
   impact: "write",
@@ -248,12 +248,12 @@ const reorder = defineOperation({
 
 const linkable = defineOperation({
   name: "linkable",
-  summary: "List articles that can be linked as a translation: other locale, not yet in a translation group.",
+  summary: "List articles linkable as translation: other locale, not yet linked.",
   method: "GET",
   path: "/api/v1/help-centers/{help_center_id}/linkable-articles",
   input: {
     help_center_id: helpCenterId,
-    exclude_locale: z.string().describe('Locale of the article you want to link, for example "de". Articles in this locale are left out.'),
+    exclude_locale: z.string().describe('Locale of the article to link; articles in it are left out.'),
   },
   query: ["exclude_locale"],
   positional: ["help_center_id"],
@@ -267,7 +267,7 @@ const linkTranslation = defineOperation({
   summary: "Make an article a translation of another article.",
   method: "PUT",
   path: "/api/v1/articles/{id}/link-translation",
-  input: { id: articleId, translation_of_id: articleId.describe("Id of the article this one is a translation of.") },
+  input: { id: articleId, translation_of_id: articleId.describe("Id of the article this one translates.") },
   positional: ["id"],
   impact: "write",
   permission: PERMISSION,

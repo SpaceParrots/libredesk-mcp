@@ -39,49 +39,49 @@ const COLLECTION_KEYS = [
   "is_published",
 ] as const;
 
-const helpCenterId = z.number().int().positive().describe("Numeric id of the help center. Find it with the list action.");
-const collectionId = z.number().int().positive().describe("Numeric id of the collection. Find it with collection_list or tree.");
+const helpCenterId = z.number().int().positive().describe("Help center id.");
+const collectionId = z.number().int().positive().describe("Collection id.");
 
-const name = z.string().describe("Display name of the help center, shown in the admin UI. Required, not empty.");
+const name = z.string().describe("Help center name.");
 const slug = z
   .string()
   .describe(
-    "URL slug of the public help center (/hc/<slug>). Lowercase letters, digits, hyphen and underscore only, up to 200 characters, unique. Not allowed: articles, search, api, sitemap.xml.",
+    "URL slug (/hc/<slug>): unique; a-z, 0-9, - and _; not articles, search, api, sitemap.xml.",
   );
-const pageTitle = z.string().describe("Title shown on the public help center pages and in the browser tab. Required, not empty.");
+const pageTitle = z.string().describe("Title of the public pages.");
 
 /** Optional settings shared by help center create and update. */
 const helpCenterSettings = {
-  meta_description: z.string().optional().describe("Meta description for search engines, up to 500 characters."),
+  meta_description: z.string().optional().describe("SEO description, up to 500 characters."),
   default_locale: z
     .string()
     .optional()
-    .describe('Locale code the help center is shown in by default, for example "en" or "de". Must be a code from the locales action. Defaults to "en".'),
+    .describe('Default locale code (from locales); "en" when unset.'),
   allowed_locales: z
     .array(z.string())
     .optional()
     .describe(
-      'Locale codes the help center can be authored in, for example ["en", "de"]. Codes come from the locales action. The default locale is always included. Locales that already have articles cannot be removed.',
+      'Locale codes (from locales) content can use; locales with articles cannot be removed.',
     ),
   theme: z
     .record(z.string(), z.unknown())
     .optional()
     .describe(
-      'Branding object, for example {"color":"#1f93ff","color_scheme":"system","tagline":"..."}. Other keys: color_dark, logo_url, favicon, header, footer, nav_links, social_links, layout, cards, article, announcement. Replaces the whole theme: read it with get first and send the full object.',
+      'Branding object such as {"color":"#1f93ff"}. Replaces the whole theme: send the full object from get.',
     ),
   custom_domain: z
     .string()
     .optional()
-    .describe('Own domain serving the help center, as origin only: "https://help.example.com" (no path, no trailing slash). Empty string removes it.'),
-  template: z.enum(["docs", "classic"]).optional().describe('Page layout of the public help center: "classic" (default) or "docs".'),
-  custom_css: z.string().optional().describe("Extra CSS added to every public page."),
-  custom_js: z.string().optional().describe("Extra JavaScript added to every public page."),
+    .describe('Own domain origin such as "https://help.example.com"; "" removes it.'),
+  template: z.enum(["docs", "classic"]).optional().describe('Page layout, "classic" by default.'),
+  custom_css: z.string().optional().describe("Extra CSS for the public pages."),
+  custom_js: z.string().optional().describe("Extra JavaScript for the public pages."),
   livechat_inbox_id: z
     .number()
     .int()
     .nullable()
     .optional()
-    .describe("Id of a live chat inbox to show as chat widget on the public pages. Null removes the widget. Must be an inbox with the live chat channel."),
+    .describe("Live chat inbox shown as widget on the public pages; null removes it."),
 };
 
 /** Optional settings shared by collection create and update. */
@@ -89,20 +89,22 @@ const collectionSettings = {
   slug: z
     .string()
     .optional()
-    .describe("Ignored by LibreDesk 2.9.2: the slug is generated from the name on create and kept unchanged on update."),
+    .describe("Ignored."),
   parent_id: z
     .number()
     .int()
     .nullable()
     .optional()
-    .describe("Id of the parent collection to nest under, up to 3 levels deep. Null makes it a top-level collection."),
-  locale: z.string().optional().describe('Locale code of the collection, for example "en". Must be one of the help center\'s allowed locales.'),
-  description: z.string().optional().describe("Short text shown under the collection name on the public help center."),
-  icon: z.string().optional().describe('Lucide icon name in kebab-case, for example "rocket" or "user-check". Letters, digits and hyphen only.'),
-  sort_order: z.number().int().optional().describe("Position among sibling collections, lowest first. Use collection_reorder to set many at once."),
+    .describe("Parent collection id (max 3 levels); null for top level."),
+  locale: z.string().optional().describe('Locale code, for example "en".'),
+  description: z.string().optional().describe("Short text under the collection name."),
+  icon: z.string().optional().describe('Lucide icon name, for example "rocket".'),
+  sort_order: z.number().int().optional().describe("Position among siblings, lowest first."),
 };
 
-const isPublished = z.boolean().describe("Whether the collection is visible on the public help center. Defaults to false (draft).");
+const collectionName = z.string().describe("Collection name.");
+
+const isPublished = z.boolean().describe("Public visibility; new collections default to false.");
 
 const getHelpCenter = (id: number, call: <T>(method: "GET", path: string) => Promise<T>) =>
   call<Record<string, unknown>>("GET", `/api/v1/help-centers/${id}`);
@@ -147,7 +149,7 @@ const list = defineOperation({
 
 const get = defineOperation({
   name: "get",
-  summary: "Get one help center with its full settings, theme included.",
+  summary: "Get one help center with all settings and theme.",
   method: "GET",
   path: "/api/v1/help-centers/{id}",
   input: { id: helpCenterId },
@@ -170,12 +172,12 @@ const locales = defineOperation({
 
 const tree = defineOperation({
   name: "tree",
-  summary: "Show the collections and articles of a help center as a tree, without article content.",
+  summary: "Collections and articles of a help center as a tree, without content.",
   method: "GET",
   path: "/api/v1/help-centers/{id}/tree",
   input: {
     id: helpCenterId,
-    locale: z.string().optional().describe('Only return collections and articles in this locale, for example "en". Omit for all locales.'),
+    locale: z.string().optional().describe('Only this locale; omit for all.'),
   },
   query: ["locale"],
   positional: ["id"],
@@ -193,7 +195,7 @@ const tree = defineOperation({
 
 const insights = defineOperation({
   name: "insights",
-  summary: "Show search analytics of the public help center: top search terms and searches without results.",
+  summary: "Top and zero-result search terms of the public help center.",
   method: "GET",
   path: "/api/v1/help-centers/{id}/insights",
   input: { id: helpCenterId },
@@ -216,7 +218,7 @@ const create = defineOperation({
 
 const update = defineOperation({
   name: "update",
-  summary: "Change settings of a help center. Fields you leave out keep their value.",
+  summary: "Change only the given settings of a help center.",
   method: "PUT",
   path: "/api/v1/help-centers/{id}",
   input: {
@@ -239,13 +241,13 @@ const update = defineOperation({
 
 const toggle = defineOperation({
   name: "toggle",
-  summary: "Switch a help center between online and offline.",
+  summary: "Take a help center online or offline.",
   method: "PUT",
   path: "/api/v1/help-centers/{id}/toggle",
   input: { id: helpCenterId },
   positional: ["id"],
   impact: "caution",
-  effect: "Takes the public help center online or offline.",
+  effect: "Changes what the public sees.",
   permission: PERMISSION,
   undocumented: true,
 });
@@ -258,7 +260,7 @@ const remove = defineOperation({
   input: { id: helpCenterId },
   positional: ["id"],
   impact: "destructive",
-  effect: "Deletes the help center with all its collections and articles.",
+  effect: "Deletes it with all its collections and articles.",
   permission: PERMISSION,
   undocumented: true,
 });
@@ -285,7 +287,7 @@ const collectionCreate = defineOperation({
   path: "/api/v1/help-centers/{help_center_id}/collections",
   input: {
     help_center_id: helpCenterId,
-    name: z.string().describe("Name of the collection, shown on the public help center. Required, not empty."),
+    name: collectionName,
     ...collectionSettings,
     is_published: isPublished.default(false),
   },
@@ -298,13 +300,13 @@ const collectionCreate = defineOperation({
 const collectionUpdate = defineOperation({
   name: "collection_update",
   group: "collection",
-  summary: "Change a collection. Fields you leave out keep their value.",
+  summary: "Change only the given fields of a collection.",
   method: "PUT",
   path: "/api/v1/help-centers/{help_center_id}/collections/{id}",
   input: {
     help_center_id: helpCenterId,
     id: collectionId,
-    name: z.string().optional().describe("New name of the collection. Not empty."),
+    name: collectionName.optional(),
     ...collectionSettings,
     is_published: isPublished.optional(),
   },
@@ -335,7 +337,7 @@ const collectionToggle = defineOperation({
   input: { id: collectionId },
   positional: ["id"],
   impact: "caution",
-  effect: "Publishes or unpublishes the collection on the public help center.",
+  effect: "Changes what the public help center shows.",
   permission: PERMISSION,
   undocumented: true,
 });
@@ -343,14 +345,14 @@ const collectionToggle = defineOperation({
 const collectionReorder = defineOperation({
   name: "collection_reorder",
   group: "collection",
-  summary: "Set the sort order of several collections at once.",
+  summary: "Sort many collections at once.",
   method: "PUT",
   path: "/api/v1/help-centers/{help_center_id}/collection-sort-order",
   input: {
     help_center_id: helpCenterId,
     order: z
       .record(z.string(), z.number().int())
-      .describe('Map of collection id to position, lowest first, for example {"3":0,"5":1}. Keys are collection ids as strings.'),
+      .describe('Map of collection id to position, for example {"3":0,"5":1}.'),
   },
   positional: ["help_center_id"],
   impact: "write",
@@ -369,7 +371,7 @@ const collectionDelete = defineOperation({
   input: { help_center_id: helpCenterId, id: collectionId },
   positional: ["help_center_id", "id"],
   impact: "destructive",
-  effect: "Deletes the collection and the articles in it.",
+  effect: "Deletes it and its articles.",
   permission: PERMISSION,
   undocumented: true,
 });

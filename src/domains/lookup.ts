@@ -22,7 +22,7 @@ function listOf(keys: readonly string[]): (data: unknown) => Record<string, unkn
 
 const me = defineOperation({
   name: "me",
-  summary: "Show the agent the API key belongs to: id, name, email, roles and permissions.",
+  summary: "The agent of the API key, with roles and permissions.",
   method: "GET",
   path: "/api/v1/agents/me",
   input: {},
@@ -38,7 +38,7 @@ const me = defineOperation({
 
 const agents = defineOperation({
   name: "agents",
-  summary: "List all agents with id, name and email, for assignment.",
+  summary: "List agents (id, name, email).",
   method: "GET",
   path: "/api/v1/agents/compact",
   input: {},
@@ -49,7 +49,7 @@ const agents = defineOperation({
 
 const teams = defineOperation({
   name: "teams",
-  summary: "List all teams with id and name, for assignment and fallback.",
+  summary: "List teams (id, name).",
   method: "GET",
   path: "/api/v1/teams/compact",
   input: {},
@@ -60,7 +60,7 @@ const teams = defineOperation({
 
 const tags = defineOperation({
   name: "tags",
-  summary: "List all conversation tags.",
+  summary: "List conversation tags.",
   method: "GET",
   path: "/api/v1/tags",
   input: {},
@@ -70,7 +70,7 @@ const tags = defineOperation({
 
 const inboxes = defineOperation({
   name: "inboxes",
-  summary: "List all inboxes with channel and whether they are enabled.",
+  summary: "List inboxes with channel and enabled state.",
   method: "GET",
   path: "/api/v1/inboxes",
   input: {},
@@ -80,7 +80,7 @@ const inboxes = defineOperation({
 
 const statuses = defineOperation({
   name: "statuses",
-  summary: "List all conversation statuses.",
+  summary: "List conversation statuses.",
   method: "GET",
   path: "/api/v1/statuses",
   input: {},
@@ -90,7 +90,7 @@ const statuses = defineOperation({
 
 const priorities = defineOperation({
   name: "priorities",
-  summary: "List all conversation priorities.",
+  summary: "List conversation priorities.",
   method: "GET",
   path: "/api/v1/priorities",
   input: {},
@@ -100,14 +100,14 @@ const priorities = defineOperation({
 
 const customAttributes = defineOperation({
   name: "custom_attributes",
-  summary: "List custom attribute definitions, optionally only those of one entity.",
+  summary: "List custom attribute definitions.",
   method: "GET",
   path: "/api/v1/custom-attributes",
   input: {
     applies_to: z
       .string()
       .optional()
-      .describe('Only return attributes that apply to this entity: "contact" or "conversation". Omit for all.'),
+      .describe('Only attributes of this entity; omit for all.'),
   },
   query: ["applies_to"],
   impact: "read",
@@ -119,6 +119,6 @@ export const lookupDomain = defineDomain({
   name: "lookup",
   tool: "libredesk_lookup",
   toolset: "core",
-  summary: "Look up agents, teams, tags, inboxes, statuses, priorities and custom attributes.",
+  summary: "Look up ids of agents, teams, inboxes and other settings.",
   operations: [me, agents, teams, tags, inboxes, statuses, priorities, customAttributes],
 });

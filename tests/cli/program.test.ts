@@ -7,7 +7,10 @@ import type { CliDeps } from "../../src/cli/domain-commands.js";
 import type { PromptAdapter } from "../../src/cli/prompt.js";
 import { loadConfig } from "../../src/config.js";
 import { ConfirmationRequiredError, InputError } from "../../src/errors.js";
+import { startMcpServer } from "../../src/mcp/server.js";
 import { neverPrompt } from "./helpers.js";
+
+vi.mock("../../src/mcp/server.js", () => ({ startMcpServer: vi.fn().mockResolvedValue(undefined) }));
 
 let dir: string;
 let cwd: string;
@@ -338,12 +341,14 @@ describe("mcp install", () => {
 });
 
 describe("serve and interactive", () => {
-  it("serve calls startServer; without one it reports not available", async () => {
+  it("serve calls startServer; without one it starts the MCP server", async () => {
     const startServer = vi.fn().mockResolvedValue(undefined);
     await run(["serve"], deps(), { startServer });
     expect(startServer).toHaveBeenCalledTimes(1);
+    expect(startMcpServer).not.toHaveBeenCalled();
     await run(["serve"]);
-    expect((errors[0] as Error).message).toMatch(/not available yet/);
+    expect(startMcpServer).toHaveBeenCalledTimes(1);
+    expect(errors).toEqual([]);
   });
 
   it("i calls runInteractive", async () => {
