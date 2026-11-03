@@ -2,6 +2,8 @@
 
 Thanks for helping. Bug reports, fixes and support for more LibreDesk endpoints are all welcome.
 
+Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md).
+
 ## Reporting a bug
 
 Open an [issue](https://github.com/SpaceParrots/libredesk-mcp/issues) with:
@@ -17,8 +19,10 @@ If the MCP server does not start in your client, include the output of `ldesk do
 1. Fork the repo and create a branch from `main`.
 2. Run `npm install`, make your change, and add tests for it.
 3. Run `npm run verify` (lint, typecheck and unit tests). It has to pass.
-4. Write the commit message as a [Conventional Commit](https://www.conventionalcommits.org/), for example `fix(articles): keep the excerpt when moving an article`. Releases and the changelog are generated from these messages.
-5. Open the pull request against `main` and describe what changed and why.
+4. Open the pull request against `main` and describe what changed and why.
+5. Write the pull request title as a [Conventional Commit](https://www.conventionalcommits.org/), for example `fix(articles): keep the excerpt when moving an article`. Pull requests are squash-merged, so the title becomes the commit on `main`, and releases and the changelog are generated from it. A check on the pull request enforces the format.
+
+CI (lint, typecheck, tests on Node 22 and 24) has to pass before a pull request can be merged.
 
 Keep a pull request to one change. For a larger change, or a new domain, open an issue first so we can agree on the approach.
 
