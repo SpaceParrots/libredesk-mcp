@@ -4,11 +4,12 @@
  * `ldesk doctor` to see what the client sees when it cannot connect. Spawning and stopping are
  * injectable, so tests never start a process.
  *
- * On Windows a command without an extension runs through the shell (`cmd.exe`), because that is
- * how a name like `ldesk` or `npx` finds its `.exe` or `.cmd` shim on PATH (cmd.exe walks PATH
- * and PATHEXT). Spawning such a name without a shell finds `.exe` and `.com` only, and Node
- * refuses to run a `.cmd` file without one. A command with an extension, or any command on other
- * systems, is spawned directly, as the client does.
+ * On Windows a `.cmd` or `.bat` shim, such as the one npm installs for `ldesk` or `npx`, needs the
+ * shell (`cmd.exe`): Node refuses to run it without one. When the caller has resolved the command
+ * on PATH, the resolved absolute path is started, never the bare name, because cmd.exe and
+ * Windows look in the current folder before PATH and the current folder may be a cloned repo.
+ * `NoDefaultCurrentDirectoryInExePath` turns that lookup off for what the shim itself starts. A
+ * command with another extension, or any command on other systems, is spawned directly.
  */
 
 import { spawn as nodeSpawn } from "node:child_process";
@@ -58,6 +59,8 @@ export interface ProbeOptions {
   readonly baseEnv: NodeJS.ProcessEnv;
   readonly platform: NodeJS.Platform;
   readonly clientVersion: string;
+  /** The absolute file the command resolves to on PATH, when known. Started instead of the bare name. */
+  readonly resolved?: string;
   readonly spawn?: SpawnFn;
   readonly stop?: StopFn;
 }
@@ -90,13 +93,30 @@ function quoteForCmd(arg: string): string {
   return /^[\w\-.:\\/@=+,]+$/.test(arg) ? arg : `"${arg.replaceAll('"', '""')}"`;
 }
 
-/** How the probe spawns `spec` on `platform`: through the shell only on Windows for a command without extension. */
-export function planSpawn(spec: LaunchSpec, platform: NodeJS.Platform): { command: string; args: readonly string[]; shell: boolean } {
-  if (platform === "win32" && win32.extname(spec.command) === "") {
+/** How {@link probeLaunch} starts a command: the file, its args, whether through the shell, extra env. */
+export interface SpawnPlan {
+  readonly command: string;
+  readonly args: readonly string[];
+  readonly shell: boolean;
+  readonly env: Readonly<Record<string, string>>;
+}
+
+/** Keeps cmd.exe and the Windows loader from looking in the current folder for a bare command name. */
+const NO_CWD_LOOKUP: Readonly<Record<string, string>> = { NoDefaultCurrentDirectoryInExePath: "1" };
+
+/**
+ * How the probe spawns `spec` on `platform`. On Windows the `resolved` path is started when there
+ * is one, through the shell when it is a `.cmd` or `.bat` shim or has no extension.
+ */
+export function planSpawn(spec: LaunchSpec, platform: NodeJS.Platform, resolved?: string): SpawnPlan {
+  if (platform !== "win32") return { command: spec.command, args: spec.args, shell: false, env: {} };
+  const command = resolved ?? spec.command;
+  const ext = win32.extname(command).toLowerCase();
+  if (ext === "" || ext === ".cmd" || ext === ".bat") {
     // One command line instead of args, because Node does not quote args for the shell.
-    return { command: [spec.command, ...spec.args].map(quoteForCmd).join(" "), args: [], shell: true };
+    return { command: [command, ...spec.args].map(quoteForCmd).join(" "), args: [], shell: true, env: NO_CWD_LOOKUP };
   }
-  return { command: spec.command, args: spec.args, shell: false };
+  return { command, args: spec.args, shell: false, env: NO_CWD_LOOKUP };
 }
 
 /** Expand `${VAR}` and `${VAR:-default}` the way Claude Code does in MCP configs. */
@@ -174,7 +194,7 @@ function rpcErrorMessage(error: unknown): string {
  * stopped before the promise resolves. Never rejects.
  */
 export function probeLaunch(spec: LaunchSpec, options: ProbeOptions): Promise<ProbeResult> {
-  const plan = planSpawn(spec, options.platform);
+  const plan = planSpawn(spec, options.platform, options.resolved);
   const stop = options.stop ?? defaultStop;
   return new Promise((resolve) => {
     const output: string[] = [];
@@ -187,7 +207,7 @@ export function probeLaunch(spec: LaunchSpec, options: ProbeOptions): Promise<Pr
     let child: ChildLike;
     try {
       child = (options.spawn ?? defaultSpawn)(plan.command, plan.args, {
-        env: { ...options.baseEnv, ...spec.env },
+        env: { ...options.baseEnv, ...spec.env, ...plan.env },
         cwd: options.cwd,
         shell: plan.shell,
         windowsHide: true,

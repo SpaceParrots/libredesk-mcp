@@ -29,6 +29,11 @@ export interface OperationContext {
   readonly profile: Profile;
   /** Send a request with the bound profile; the response envelope is unwrapped. */
   readonly call: <T = unknown>(method: HttpMethod, path: string, opts?: Omit<RequestOptions, "fetchImpl">) => Promise<T>;
+  /**
+   * Who started the operation. An MCP call comes from a model whose arguments content it read can
+   * steer, so operations that touch the local machine restrict themselves for `mcp`.
+   */
+  readonly caller: "cli" | "mcp";
 }
 
 /**

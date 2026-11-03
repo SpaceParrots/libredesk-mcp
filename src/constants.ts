@@ -14,6 +14,10 @@ export const ENV = {
   PROFILE: "LIBREDESK_PROFILE",
   TOOLSETS: "LIBREDESK_TOOLSETS",
   CONFIG_DIR: "LIBREDESK_CONFIG_DIR",
+  /** Folder `articles sync` may read over MCP; defaults to the server's working directory. */
+  SYNC_ROOT: "LIBREDESK_SYNC_ROOT",
+  /** Comma-separated stored profiles an MCP tool call may pick with its `profile` argument. */
+  MCP_PROFILES: "LIBREDESK_MCP_PROFILES",
 } as const;
 
 /** Name of the config directory inside the user's home directory. */

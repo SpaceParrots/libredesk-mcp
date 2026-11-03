@@ -27,6 +27,8 @@ export interface RunDeps {
   readonly profile?: Profile;
   /** Replacement for the global `fetch`, used by tests. */
   readonly fetchImpl?: typeof fetch;
+  /** Who started the operation; defaults to the CLI. */
+  readonly caller?: OperationContext["caller"];
 }
 
 function toQueryValue(value: unknown): QueryValue {
@@ -107,6 +109,7 @@ export async function runOperation(op: Operation, raw: unknown, deps: RunDeps = 
   const ctx: OperationContext = {
     profile,
     call: (method, path, opts = {}) => request(profile, method, path, { ...opts, fetchImpl: deps.fetchImpl }),
+    caller: deps.caller ?? "cli",
   };
   let data: unknown;
   try {

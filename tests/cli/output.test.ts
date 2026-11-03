@@ -28,6 +28,12 @@ describe("printResult", () => {
     expect(out).not.toContain("nested");
   });
 
+  it("escapes terminal control characters from server text in text mode, not in json mode", () => {
+    const evil = { title: "ok\u001b]0;pwned\u0007" };
+    expect(capture((w) => printResult(evil, { json: false }, w))).toBe("title: ok\\x1b]0;pwned\\x07\n");
+    expect(JSON.parse(capture((w) => printResult(evil, { json: true }, w)))).toEqual(evil);
+  });
+
   it("prints objects as key: value lines, strings as is, json pretty", () => {
     expect(capture((w) => printResult({ id: 1, tags: ["a"] }, { json: false }, w))).toBe('id: 1\ntags: ["a"]\n');
     expect(capture((w) => printResult("hello", { json: false }, w))).toBe("hello\n");

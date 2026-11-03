@@ -1,3 +1,6 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -142,6 +145,38 @@ describe("MCP server over a transport", () => {
     } finally {
       await client.close();
       await server.close();
+    }
+  });
+
+  it("keeps sync inside the server's folder and limits the profile argument to LIBREDESK_MCP_PROFILES", async () => {
+    // Dummy credentials on a closed port: both refusals happen before any request is sent.
+    vi.stubEnv("LIBREDESK_URL", "http://127.0.0.1:9");
+    vi.stubEnv("LIBREDESK_API_KEY", "dummy-key");
+    vi.stubEnv("LIBREDESK_API_SECRET", "dummy-secret");
+    vi.stubEnv("LIBREDESK_SYNC_ROOT", "");
+    vi.stubEnv("LIBREDESK_MCP_PROFILES", "client-a");
+    const outside = await mkdtemp(join(tmpdir(), "ldesk-outside-"));
+    const server = createMcpServer({});
+    const client = new Client({ name: "test", version: "0.0.0" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    try {
+      const { tools } = await client.listTools();
+      const publish = tools.find((t) => t.name === "libredesk_publish");
+      expect(publish?.annotations).toMatchObject({ destructiveHint: true });
+      expect(JSON.stringify(publish?.inputSchema)).toContain("article_move");
+
+      const sync = await client.callTool({ name: "libredesk_articles", arguments: { action: "sync", path: outside, collection_id: 7 } });
+      expect(sync.isError).toBe(true);
+      expect(JSON.stringify(sync.content)).toContain("is outside");
+
+      const other = await client.callTool({ name: "libredesk_lookup", arguments: { action: "me", profile: "client-b" } });
+      expect(other.isError).toBe(true);
+      expect(JSON.stringify(other.content)).toContain('profile \\"client-b\\" is not allowed');
+    } finally {
+      await client.close();
+      await server.close();
+      await rm(outside, { recursive: true, force: true });
     }
   });
 });

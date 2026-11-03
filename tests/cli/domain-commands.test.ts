@@ -149,7 +149,7 @@ describe("addDomainCommands", () => {
 
   it("accepts null for nullable fields", async () => {
     const h = harness();
-    await exec(h, "help-center", "collection", "update", "5", "--help-center-id", "1", "--parent-id", "null");
+    await exec(h, "help-center", "collection", "update", "5", "--help-center-id", "1", "--parent-id", "null", "--yes");
     expect(h.runs[0]?.values.parent_id).toBeNull();
   });
 

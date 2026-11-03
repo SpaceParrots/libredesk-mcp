@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { maskSecrets, maskValue, redactText } from "../src/mask.js";
+import { maskSecrets, maskValue, redactDeep, redactText } from "../src/mask.js";
 
 describe("maskSecrets", () => {
   it("masks secret keys at any depth and leaves others", () => {
@@ -39,5 +39,13 @@ describe("redactText", () => {
   });
   it("ignores empty secrets", () => {
     expect(redactText("abc", [""])).toBe("abc");
+  });
+});
+
+describe("redactDeep", () => {
+  it("redacts every string in a nested value, keys included, without changing the input", () => {
+    const input = { a: ["x s3cr3t"], s3cr3t: { n: 1, ok: true, none: null } };
+    expect(redactDeep(input, ["s3cr3t"])).toEqual({ a: ["x ••••"], "••••": { n: 1, ok: true, none: null } });
+    expect(input.a[0]).toBe("x s3cr3t");
   });
 });

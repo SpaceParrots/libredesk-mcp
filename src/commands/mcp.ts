@@ -3,7 +3,7 @@
  * `ldesk mcp install`: register the MCP server in a project's `.mcp.json`, or print the snippet.
  */
 
-import { chmod, readFile, writeFile } from "node:fs/promises";
+import { chmod, lstat, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Command } from "commander";
 import { Option } from "commander";
@@ -13,7 +13,7 @@ import { handleCliError, printInfo, printSuccess } from "../cli/output.js";
 import { loadConfig, profileNotFound } from "../config.js";
 import { ENV } from "../constants.js";
 import { resolveProfile } from "../context.js";
-import { CancelledError, ConfirmationRequiredError } from "../errors.js";
+import { CancelledError, ConfigError, ConfirmationRequiredError } from "../errors.js";
 import { buildServerEntry, mergeMcpJson, type McpServerEntry } from "../services/mcp-config.js";
 
 const SERVER_NAME = "libredesk";
@@ -30,8 +30,12 @@ interface InstallOptions {
   showSecret?: boolean;
 }
 
+/** Read the file, or `undefined` when it does not exist. A symbolic link is refused, so the secret never lands in a file the link points to. */
 async function readIfExists(path: string): Promise<string | undefined> {
   try {
+    if ((await lstat(path)).isSymbolicLink()) {
+      throw new ConfigError(`${path} is a symbolic link.`, { hint: "Replace it with a regular file, or use --scope print." });
+    }
     return await readFile(path, "utf8");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;

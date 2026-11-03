@@ -33,12 +33,13 @@ Every endpoint is declared once as an `Operation` (`src/ops/define.ts`, built wi
 - `src/ops/merge.ts` has `mergeForUpdate`, the read-modify-write helper for updates.
 - `src/http.ts` is the only code that talks to the network: auth header `Authorization: token <key>:<secret>`, base URL normalisation, response envelope unwrapping, readable errors for non-JSON responses.
 - `src/config.ts`, `src/context.ts` store profiles and resolve the one in effect (flag, the three env vars, `LIBREDESK_PROFILE`, project link, active profile).
-- `src/commands/*` are the hand-written commands: login, profile, status, doctor, request, mcp. `doctor` launches the client's configured server entries through `src/services/mcp-probe.ts`, whose spawn and stop are injected in tests, so no unit test starts a process. An entry of `./.mcp.json` comes with the folder (a cloned repo), so doctor starts it only after a confirmation or `--yes`.
+- `src/commands/*` are the hand-written commands: login, profile, status, doctor, request, mcp. `doctor` launches the client's configured server entries through `src/services/mcp-probe.ts`, whose spawn and stop are injected in tests, so no unit test starts a process. `launchRisks` in `src/services/doctor.ts` lists why the current folder could decide what an entry runs (an entry of `./.mcp.json`, a relative command path, a package runner next to `package.json` or `node_modules`, a planted file named like the command on Windows); such an entry starts only after `confirmLaunch` or `--yes`. On Windows `planSpawn` sets `NoDefaultCurrentDirectoryInExePath`, so cmd.exe does not pick a command from the folder.
 - `src/services/*` hold the logic behind those commands, kept free of printing.
 - `src/mcp/server.ts` registers the tools, reads `LIBREDESK_TOOLSETS`, and starts stdio. `src/mcp/instructions.ts` is the text clients put into the model's system prompt.
 - `src/content/markdown.ts` converts article content between markdown and the HTML LibreDesk stores. `src/content/frontmatter.ts` reads flat frontmatter and sets one field without touching the rest of the file.
 - `src/services/article-sync.ts` is `articles sync`: local `.md` files to articles, the new id written back into the file, unchanged articles skipped by comparing canonical markdown, status never touched.
-- `src/mask.ts` masks secrets; every printed or returned value goes through it.
+- `src/mask.ts` masks secrets; every printed or returned value goes through it. `src/http.ts` also redacts the profile's secret from every error and response body.
+- `src/text.ts` escapes terminal control and bidi characters. CLI text output goes through `printable`, single-line values in doctor through `printableLine`; `--json` output stays unescaped.
 
 `src/index.ts` runs interactive mode with no arguments on a terminal, the MCP server with no arguments otherwise, and the Commander program for anything else.
 
@@ -72,6 +73,8 @@ A new domain is a file in `src/domains/` exporting a `Domain` (`name` kebab-case
 - Writes that echo content (article and snippet create, update, set_status, move) return a short record through `present`; `get` returns the whole one. Do not send back content the caller just wrote.
 - An article reaches the AI assistants only when it is published, `ai_enabled` is on, every ancestor collection is published and the help center is active (`internal/ai/queries.sql`, `get-embeddable-help-articles`). LibreDesk ignores a slug on create and update: it builds it from the title on create (accents dropped, so "ä" becomes "a") and keeps it on update.
 - New articles default to `draft` with `ai_enabled` true. Publishing goes through `set_status`.
+- Anything that can make content public is `caution` or an escalation, and so leaves the MCP domain tools: moving articles and collections (`move`, `collection_move`, `parent_id`), publishing collections, and a help center's `custom_css`, `custom_js` and `custom_domain`. When an escalated field has no caution op of its own, the MCP path is `libredesk_request`.
+- `OperationContext.caller` is `"mcp"` when a tool runs the operation. A `run` that reads local files uses it to apply the MCP limits: `articles sync` passes `root: mcpSyncRoot()` (the server's folder or `LIBREDESK_SYNC_ROOT`) and `refuseMoves`, and never follows symbolic links. `LIBREDESK_MCP_PROFILES` limits the `profile` argument of every tool.
 - Files open with a JSDoc `@module` block and every export has a JSDoc comment. File names are kebab-case. Service inputs and config objects are `readonly`, and config changes return new objects.
 - Commits are Conventional Commits, one line, no co-author line. Markdown files have one line per paragraph and no hard wrapping.
 - Helper scripts are plain `node` `.mjs` files or POSIX sh, so they work on every OS. `scripts/list-undocumented.mjs` imports from `dist/`.

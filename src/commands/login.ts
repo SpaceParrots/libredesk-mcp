@@ -6,8 +6,8 @@
 import type { Command } from "commander";
 import type { CliDeps } from "../cli/domain-commands.js";
 import { confirmationLine, YES_DESCRIPTION } from "../cli/help.js";
-import { handleCliError, printSuccess } from "../cli/output.js";
-import { assertValidProfileName, loadConfig, normalizeUrl, saveConfig, upsertProfile } from "../config.js";
+import { handleCliError, printInfo, printSuccess } from "../cli/output.js";
+import { assertValidProfileName, loadConfig, normalizeUrl, saveConfig, sendsCredentialsInClear, upsertProfile } from "../config.js";
 import { CancelledError, ConfirmationRequiredError, InputError } from "../errors.js";
 import { verifyCredentials } from "../services/auth.js";
 
@@ -77,6 +77,9 @@ export function registerLogin(program: Command, deps: CliDeps): void {
           }
           const overwrite = await deps.prompt.confirm({ message: `Profile "${name}" already exists. Overwrite it?`, initialValue: false });
           if (!overwrite) throw new CancelledError();
+        }
+        if (sendsCredentialsInClear(credentials.url)) {
+          printInfo(`Warning: ${credentials.url} uses plain http, so the API key and secret travel unencrypted. Use https unless this is a trusted network.`);
         }
         const agent = await verifyCredentials(credentials);
         const next = upsertProfile(config, { name, ...credentials });

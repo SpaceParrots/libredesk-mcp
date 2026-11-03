@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Profile } from "../../src/config.js";
 import { markdownToHtml } from "../../src/content/markdown.js";
 import type { OperationContext } from "../../src/ops/define.js";
-import { readLocalArticle, syncArticles, type SyncFs } from "../../src/services/article-sync.js";
+import { mcpSyncRoot, readLocalArticle, syncArticles, type SyncFs } from "../../src/services/article-sync.js";
 
 const profile: Profile = { name: "t", url: "https://ex.com", apiKey: "key", apiSecret: "secret" };
 const DIR = resolve("help-folder");
@@ -14,13 +14,15 @@ interface Call {
   readonly body: unknown;
 }
 
-function memoryFs(files: Record<string, string>, failWrites = false): { fs: SyncFs; files: Map<string, string> } {
+function memoryFs(files: Record<string, string>, failWrites = false, links: Record<string, string> = {}): { fs: SyncFs; files: Map<string, string> } {
   const store = new Map(Object.entries(files).map(([name, text]) => [join(DIR, name), text]));
+  // A link is listed in the folder and reads its target, like a symbolic link.
+  const linked = new Map(Object.entries(links).map(([name, target]) => [join(DIR, name), target]));
   return {
     files: store,
     fs: {
       readFile: (path) => {
-        const text = store.get(path);
+        const text = store.get(linked.get(path) ?? path);
         return text === undefined ? Promise.reject(new Error(`no file ${path}`)) : Promise.resolve(text);
       },
       writeFile: (path, text) => {
@@ -28,8 +30,10 @@ function memoryFs(files: Record<string, string>, failWrites = false): { fs: Sync
         store.set(path, text);
         return Promise.resolve();
       },
-      readdir: () => Promise.resolve([...store.keys()].map((path) => path.slice(DIR.length + 1))),
+      readdir: () => Promise.resolve([...store.keys(), ...linked.keys()].filter((path) => path.startsWith(DIR)).map((path) => path.slice(DIR.length + 1))),
       isDirectory: (path) => Promise.resolve(path === DIR),
+      isRegularFile: (path) => Promise.resolve(store.has(path) && !linked.has(path)),
+      realpath: (path) => Promise.resolve(linked.get(path) ?? path),
     },
   };
 }
@@ -48,7 +52,7 @@ function server(articles: Record<number, Record<string, unknown>>): { ctx: Opera
     if (method === "POST") return Promise.resolve({ id: ++nextId } as never);
     return Promise.resolve({ id } as never);
   };
-  return { ctx: { profile, call: call as OperationContext["call"] }, calls };
+  return { ctx: { profile, call: call as OperationContext["call"], caller: "cli" }, calls };
 }
 
 const stored = (id: number, title: string, markdown: string, extra: Record<string, unknown> = {}) => ({
@@ -75,6 +79,13 @@ describe("readLocalArticle", () => {
     expect(() => readLocalArticle("Just text")).toThrow(/no title/);
     expect(() => readLocalArticle("---\ntitle: T\nai_enabled: yes\n---\nx")).toThrow(/ai_enabled must be true or false/);
     expect(() => readLocalArticle("---\ntitle: T\nid: abc\n---\nx")).toThrow(/id must be a whole number/);
+    expect(() => readLocalArticle("---\ntitle: T\nid: 0\n---\nx")).toThrow(/id must be greater than 0/);
+    expect(() => readLocalArticle("---\ntitle: T\ncollection_id: -3\n---\nx")).toThrow(/collection_id must be greater than 0/);
+    expect(() => readLocalArticle("---\ntitle: T\nid: 99999999999999999999\n---\nx")).toThrow(/id must be a whole number/);
+  });
+
+  it("rejects a __proto__ line as an unknown key instead of dropping it", () => {
+    expect(() => readLocalArticle("---\ntitle: T\n__proto__: 1\n---\nx")).toThrow(/unknown frontmatter __proto__/);
   });
 });
 
@@ -158,6 +169,15 @@ describe("syncArticles", () => {
     expect(calls[1]?.body).toEqual({ collection_id: 9 });
   });
 
+  it("with refuseMoves fails a file that would move its article and writes nothing for it", async () => {
+    const { fs } = memoryFs({ "a.md": "---\nid: 6\ntitle: New\ncollection_id: 9\n---\nBody" });
+    const { ctx, calls } = server({ 6: stored(6, "T", "Body") });
+    const result = await syncArticles({ path: DIR, dryRun: false, refuseMoves: true }, ctx, fs);
+    expect(result.failed).toBe(1);
+    expect(result.files[0]?.error).toContain("use article_move of libredesk_publish");
+    expect(calls.every((c) => c.method === "GET")).toBe(true);
+  });
+
   it("reports failing files and keeps going", async () => {
     const { fs } = memoryFs({
       "a.md": "---\nid: 6\ntitle: T\n---\nBody",
@@ -191,5 +211,35 @@ describe("syncArticles", () => {
     const single = await syncArticles({ path: join(DIR, "a.md"), dryRun: false }, ctx, fs);
     expect(single.files).toEqual([{ file: "a.md", action: "unchanged", id: 6 }]);
     await expect(syncArticles({ path: join(DIR, "a.txt"), dryRun: false }, ctx, fs)).rejects.toThrow(/not a .md file/);
+  });
+
+  it("skips a .md name that is a symbolic link: nothing is read, posted or written through it", async () => {
+    const outside = resolve("home", ".zshrc");
+    const rc = ["# shell rc", "export TOKEN=dummy", ""].join("\n");
+    const { fs, files } = memoryFs({ "a.md": ["# A", "", "x"].join("\n") }, false, { "b-guide.md": outside });
+    files.set(outside, rc);
+    const { ctx, calls } = server({});
+    const result = await syncArticles({ path: DIR, collectionId: 7, dryRun: false }, ctx, fs);
+    expect(result.files.map((f) => [f.file, f.action])).toEqual([["a.md", "created"], ["b-guide.md", "failed"]]);
+    expect(result.files[1]?.error).toMatch(/symbolic links are not synced/);
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
+    expect(files.get(outside)).toBe(rc);
+  });
+
+  it("with a root, rejects a path outside it, also through a link, and syncs one inside it", async () => {
+    const { fs } = memoryFs({ "a.md": ["---", "id: 6", "title: T", "---", "Body"].join("\n") });
+    const { ctx, calls } = server({ 6: stored(6, "T", "Body") });
+    await expect(syncArticles({ path: DIR, root: resolve("elsewhere"), dryRun: false }, ctx, fs)).rejects.toThrow(/is outside .*LIBREDESK_SYNC_ROOT/);
+    expect(calls).toEqual([]);
+    const inside = await syncArticles({ path: DIR, root: resolve("."), dryRun: false }, ctx, fs);
+    expect(inside.files).toEqual([{ file: "a.md", action: "unchanged", id: 6 }]);
+
+    const linkFs: SyncFs = { ...fs, realpath: (path) => Promise.resolve(path === DIR ? resolve("..", "vault") : path) };
+    await expect(syncArticles({ path: DIR, root: resolve("."), dryRun: false }, ctx, linkFs)).rejects.toThrow(/is outside/);
+  });
+
+  it("takes the MCP root from LIBREDESK_SYNC_ROOT, else the working directory", () => {
+    expect(mcpSyncRoot({}, resolve("proj"))).toBe(resolve("proj"));
+    expect(mcpSyncRoot({ LIBREDESK_SYNC_ROOT: "docs" }, resolve("proj"))).toBe(resolve("proj", "docs"));
   });
 });

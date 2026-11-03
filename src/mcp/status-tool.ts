@@ -5,13 +5,15 @@
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getStatus } from "../services/status.js";
-import { jsonContent, PROFILE_FIELD, toolErrorResult, type ToolResult } from "./action-tool.js";
+import { jsonContent, mcpProfileError, PROFILE_FIELD, toolErrorResult, type ToolResult } from "./action-tool.js";
 
 const DESCRIPTION =
   "Show the profile in use and whether its server accepts it, as which agent. Call it on auth, profile or connection errors.";
 
 /** Run the status check for `profile` (or the resolved default) and return it as a tool result. */
 export async function statusResult(profile: string | undefined, deps: Parameters<typeof getStatus>[0] = {}): Promise<ToolResult> {
+  const refused = mcpProfileError(profile, deps.env ?? process.env);
+  if (refused !== undefined) return { content: [{ type: "text", text: refused }], isError: true };
   try {
     return jsonContent(await getStatus({ ...deps, profile: profile || undefined }));
   } catch (error) {

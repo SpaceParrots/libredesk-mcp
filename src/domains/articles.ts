@@ -10,7 +10,7 @@ import { readArticleContent, toArticleHtml, type ContentFormat } from "../conten
 import { forIds, idOrIds } from "../ops/bulk.js";
 import { defineDomain, defineOperation } from "../ops/define.js";
 import { mergeForUpdate } from "../ops/merge.js";
-import { syncArticles } from "../services/article-sync.js";
+import { mcpSyncRoot, syncArticles } from "../services/article-sync.js";
 import { ARTICLE_KEYS, NO_COLLECTION, presentArticleWrite } from "./article-record.js";
 
 const PERMISSION = "help_center:manage";
@@ -278,12 +278,12 @@ const update = defineOperation({
 
 const sync = defineOperation({
   name: "sync",
-  summary: "Create or update draft articles from local .md files with frontmatter; writes new ids back. Never publishes.",
+  summary: "Create or update articles from local .md files with frontmatter; writes new ids back. Never changes status.",
   // A composite: it creates, reads, updates and moves articles through several endpoints.
   method: "PUT",
   path: "/api/v1/articles",
   input: {
-    path: z.string().describe("A .md file, or a folder of them, on this machine."),
+    path: z.string().describe("A .md file or a folder of them; over MCP inside the server's folder."),
     collection_id: collectionId.optional(),
     dry_run: z.boolean().default(false).describe("Only report what would change."),
   },
@@ -291,7 +291,8 @@ const sync = defineOperation({
   impact: "write",
   permission: PERMISSION,
   undocumented: true,
-  run: (input, ctx) => syncArticles({ path: input.path, collectionId: input.collection_id, dryRun: input.dry_run }, ctx),
+  run: (input, ctx) =>
+    syncArticles({ path: input.path, collectionId: input.collection_id, dryRun: input.dry_run, ...(ctx.caller === "mcp" ? { root: mcpSyncRoot(), refuseMoves: true } : {}) }, ctx),
   cli: {
     notes: [
       "Each file holds one article. Frontmatter between --- lines sets the fields, one `key: value` per line: title, collection_id, excerpt, sort_order, ai_enabled, locale, meta_title, meta_description, meta_image_url, format (markdown or html), id. Without title, a leading `# heading` is the title. --collection-id is the collection for files without collection_id. A folder syncs its .md files, not its subfolders.",
@@ -332,13 +333,15 @@ const move = defineOperation({
   path: "/api/v1/articles/{id}/collection",
   input: { id: articleId, collection_id: collectionId.describe("Target collection id.") },
   positional: ["id"],
-  impact: "write",
+  // The article keeps its status, and visibility follows the collections above it, so a move can make it public.
+  impact: "caution",
+  effect: "Can make a published article public and AI-visible.",
   permission: PERMISSION,
   undocumented: true,
   present: presentArticleWrite,
   cli: {
-    notes: ["The target collection must belong to the article's help center."],
-    examples: ["ldesk articles move 42 --collection-id 9"],
+    notes: ["The target collection must belong to the article's help center. The article keeps its status."],
+    examples: ["ldesk articles move 42 --collection-id 9 --yes"],
   },
 });
 

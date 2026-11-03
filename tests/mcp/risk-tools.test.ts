@@ -76,7 +76,7 @@ describe("riskActions", () => {
     const run = vi.fn().mockResolvedValue({ ok: true });
     const res = await dispatchAction(riskActions([things], "delete", run), { action: "thing_delete", id: 3 });
     expect(res.isError).toBeUndefined();
-    expect(run).toHaveBeenCalledWith(remove, { id: 3 });
+    expect(run).toHaveBeenCalledWith(remove, { id: 3 }, { caller: "mcp" });
   });
 });
 
@@ -85,7 +85,7 @@ describe("registerRiskTools", () => {
     const recorded: RecordedTool[] = [];
     registerRiskTools(recordingServer(recorded), [things]);
     expect(recorded.map((tool) => [tool.name, tool.annotations])).toEqual([
-      ["libredesk_publish", { readOnlyHint: false, destructiveHint: false, idempotentHint: false }],
+      ["libredesk_publish", { readOnlyHint: false, destructiveHint: true, idempotentHint: false }],
       ["libredesk_delete", { readOnlyHint: false, destructiveHint: true, idempotentHint: true }],
     ]);
   });
@@ -100,7 +100,7 @@ describe("registerRiskTools", () => {
     const recorded: RecordedTool[] = [];
     registerRiskTools(recordingServer(recorded), DOMAINS);
     const actions = (name: string) => (recorded.find((tool) => tool.name === name)?.shape.action as z.ZodEnum).options;
-    expect(actions("libredesk_publish")).toEqual(["help_center_toggle", "collection_publish", "article_set_status", "learning_set"]);
+    expect(actions("libredesk_publish")).toEqual(["help_center_toggle", "collection_publish", "collection_move", "article_set_status", "article_move", "learning_set"]);
     expect(actions("libredesk_delete")).toEqual(["help_center_delete", "collection_delete", "article_delete", "snippet_delete"]);
     expect(recorded[0]?.description).toContain(ALL_UNDOCUMENTED);
   });

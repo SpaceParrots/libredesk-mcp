@@ -32,7 +32,7 @@ ldesk doctor --json --timeout 60
 
 It starts each MCP entry exactly as configured, sends the MCP `initialize` request, and shows the answer, or the exit code and the last lines the server printed. When an entry fails but a direct `node` launch works, it prints a `claude mcp add` line you can use instead.
 
-Run it in the folder where your MCP client runs, because local and project entries depend on it. An entry in `./.mcp.json` comes with the folder, for example with a cloned repo, so doctor shows its command and asks before starting it. Without a terminal it skips such entries unless you pass `--yes`. Values of environment variables in the config are never printed, only their names. Each launch may take up to 10 seconds; raise that with `--timeout`, for example for `npx` on its first run.
+Run it in the folder where your MCP client runs, because local and project entries depend on it. An entry in `./.mcp.json` comes with the folder, for example with a cloned repo, so doctor shows its command and asks before starting it. It asks the same way whenever the folder decides what would run: for a command given as a path inside the folder, for `npx` or another package runner next to a `package.json`, `node_modules` or `.npmrc`, and on Windows for a file in the folder named like the command. Without a terminal it skips such entries unless you pass `--yes`. Values of environment variables in the config are never printed, only their names, and neither are values filled in from `${VAR}`. Each launch may take up to 10 seconds; raise that with `--timeout`, for example for `npx` on its first run.
 
 On Windows, a command without an extension, such as `ldesk` or `npx`, is started through `cmd.exe` so that its `.cmd` or `.exe` file is found on PATH.
 
@@ -58,7 +58,7 @@ ldesk profile remove staging
 
 ```bash
 ldesk help-center list|get|locales|tree|insights|create|update|toggle|delete
-ldesk help-center collection list|create|update|publish|toggle|reorder|delete
+ldesk help-center collection list|create|update|move|publish|toggle|reorder|delete
 ldesk articles list|visibility|get|create|update|sync|set-status|move|reorder|linkable|link-translation|unlink-translation|delete
 ldesk knowledge snippet list|get|create|update|import-url|delete
 ldesk knowledge faq list|approve|reject
@@ -87,13 +87,13 @@ Running `ldesk` with no arguments in a terminal starts interactive mode (also `l
 ```bash
 ldesk help-center create --name "Docs" --slug docs --page-title "Help"
 ldesk help-center collection create 1 --name "Getting started" --is-published --yes
-ldesk help-center collection update 1 5 --parent-id null
+ldesk help-center collection move 1 5 --parent-id null --yes
 ldesk help-center tree 1
 ldesk help-center collection publish 1 '[5,6,7]' --is-published --yes
 ldesk help-center toggle 1 --yes
 ```
 
-Creating or updating a collection with `--is-published` or `--no-is-published` asks for confirmation, like `publish` and `toggle`, because it changes what the public help center shows. `collection publish` sets a known state for one collection or a JSON list of ids; `collection toggle` flips it. An article reaches AI assistants only when every collection above it is published.
+Creating or updating a collection with `--is-published` or `--no-is-published` asks for confirmation, like `publish` and `toggle`, because it changes what the public help center shows. So does moving a collection, with `collection move` or `collection update --parent-id`, because a collection moved under a published parent becomes public. Setting `--custom-css`, `--custom-js` or `--custom-domain` on a help center asks too, because that code and domain serve the public pages. `collection publish` sets a known state for one collection or a JSON list of ids; `collection toggle` flips it. An article reaches AI assistants only when every collection above it is published.
 
 ## Articles
 
@@ -108,6 +108,8 @@ ldesk articles get 12
 ```
 
 `ldesk articles create <collection-id>` makes a draft with `ai_enabled` on. To publish it, use `set-status`, or pass `--status published` to `create`. Both ask for confirmation, because a published article is public and used by the AI assistants.
+
+`articles move` asks for confirmation as well: the article keeps its status, so a published article moved into a published collection becomes public.
 
 `set-status` takes one id or a JSON list of ids. With a list it prints how many succeeded and failed, and one line per id.
 
@@ -155,7 +157,7 @@ ldesk articles set-status '[41,42,43]' --status published --yes
 How a run treats each file:
 
 - **No `id`:** sync creates a draft and writes `id: <new id>` into the file's frontmatter. The next run then updates that article instead of creating another one.
-- **With `id`:** sync compares the file with the article and writes only when something differs. A different `collection_id` moves the article. Keys you leave out keep their value on the server.
+- **With `id`:** sync compares the file with the article and writes only when something differs. A different `collection_id` moves the article; over MCP that file fails instead, and the model has to use `article_move`, which clients can keep on ask. Keys you leave out keep their value on the server.
 - **Status:** sync never publishes or unpublishes. A `status` key is an error; publish afterwards with `set-status`.
 
 It prints the totals and one line per file. A failing file does not stop the others.

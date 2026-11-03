@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -111,6 +111,16 @@ describe("login", () => {
     expect(config.profiles["help-desk-example"]).toMatchObject({ url: "https://help.desk.example", apiKey: "key-12345678" });
     expect(out.join("")).toContain("Logged in to https://help.desk.example as kevin@x.y. Profile help-desk-example is active.");
     expect(out.join("")).not.toContain("top-secret-value");
+  });
+
+  it("warns about plain http to another machine, not about https or localhost", async () => {
+    stubMe();
+    await run(["login", "--url", "http://desk.example", "--api-key", "k", "--api-secret", "s"]);
+    expect(out.join("")).toContain("uses plain http");
+    out.length = 0;
+    await run(["login", "--url", "http://localhost:9000", "--api-key", "k", "--api-secret", "s"]);
+    await run(loginArgs);
+    expect(out.join("")).not.toContain("plain http");
   });
 
   it("says saved when another profile is already active", async () => {
@@ -452,6 +462,20 @@ describe("mcp install", () => {
     };
     expect(parsed.mcpServers.libredesk.env.LIBREDESK_API_SECRET).toBe("top-secret-value");
     expect(out.join("")).not.toContain("top-secret-value");
+  });
+
+  it("refuses a ./.mcp.json that is a symbolic link and leaves its target alone", async () => {
+    const project = await withProfile();
+    const target = join(dir, "elsewhere.json");
+    await writeFile(target, "{}");
+    try {
+      await symlink(target, join(project, ".mcp.json"), "file");
+    } catch {
+      return; // Windows without the symlink privilege: nothing to test.
+    }
+    await run(["mcp", "install", "--mode", "env", "--yes"]);
+    expect((errors[0] as Error).message).toContain("is a symbolic link");
+    expect(await readFile(target, "utf8")).toBe("{}");
   });
 
   it("in a TTY asks before writing a secret and cancels on No", async () => {

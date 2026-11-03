@@ -4,7 +4,8 @@
  * Transforms never touch the disk; callers load, transform, then save.
  */
 
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { DEFAULT_CONFIG_DIR_NAME, ENV } from "./constants.js";
@@ -106,13 +107,29 @@ export async function loadConfig(env: NodeJS.ProcessEnv = process.env): Promise<
   return parseConfig(parsed, path);
 }
 
-/** Write the config atomically (temp file, then rename) with mode 0600. */
+/**
+ * Write the config atomically with mode 0600, in a directory created with mode 0700. The temp file
+ * gets a random name and is created exclusively, so a file or link planted at that name is never written through.
+ */
 export async function saveConfig(config: LibreDeskConfig, env: NodeJS.ProcessEnv = process.env): Promise<void> {
   const path = getConfigPath(env);
-  const tmp = `${path}.tmp`;
-  await mkdir(getConfigDir(env), { recursive: true });
-  await writeFile(tmp, `${JSON.stringify(config, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-  await rename(tmp, path);
+  const tmp = `${path}.${randomBytes(6).toString("hex")}.tmp`;
+  await mkdir(getConfigDir(env), { recursive: true, mode: 0o700 });
+  try {
+    await writeFile(tmp, `${JSON.stringify(config, null, 2)}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
+    await rename(tmp, path);
+  } catch (error) {
+    await rm(tmp, { force: true });
+    throw error;
+  }
+}
+
+/** Whether `url` sends the credentials unencrypted to another machine: plain `http://` to a host that is not loopback. */
+export function sendsCredentialsInClear(url: string): boolean {
+  const { protocol, hostname } = new URL(url);
+  if (protocol !== "http:") return false;
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  return !(host === "localhost" || host.endsWith(".localhost") || host === "::1" || /^127\.\d+\.\d+\.\d+$/.test(host));
 }
 
 /** Trim a base URL, strip trailing slashes and require http or https. Path prefixes are kept. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { buildDescription, dispatchAction, jsonContent, mergeShapes, toolErrorResult, type ActionMap } from "../../src/mcp/action-tool.js";
+import { buildDescription, dispatchAction, jsonContent, mcpProfileError, mergeShapes, toolErrorResult, type ActionMap } from "../../src/mcp/action-tool.js";
 import { PermissionError } from "../../src/errors.js";
 
 function text(result: { content: { text: string }[] }): string {
@@ -125,5 +125,19 @@ describe("buildDescription", () => {
     expect(buildDescription("Things.", makeActions([]))).toBe(
       "Things.\n\nActions:\n- greet(name): Greet someone.\n- count(...): Count optionally.",
     );
+  });
+});
+
+describe("mcpProfileError", () => {
+  it("allows any profile when LIBREDESK_MCP_PROFILES is unset or empty", () => {
+    expect(mcpProfileError("x", {})).toBeUndefined();
+    expect(mcpProfileError("x", { LIBREDESK_MCP_PROFILES: " " })).toBeUndefined();
+  });
+
+  it("allows no profile argument, and only listed names otherwise", () => {
+    const env = { LIBREDESK_MCP_PROFILES: "a, b" };
+    expect(mcpProfileError(undefined, env)).toBeUndefined();
+    expect(mcpProfileError("b", env)).toBeUndefined();
+    expect(mcpProfileError("c", env)).toBe('profile "c" is not allowed for this server. Allowed: a, b (LIBREDESK_MCP_PROFILES).');
   });
 });

@@ -20,8 +20,9 @@ interface RiskToolSpec {
 const SPECS: Readonly<Record<RiskTool, RiskToolSpec>> = {
   publish: {
     description: "Change what customers and AI assistants see: publish articles and collections, take help centers online or offline, switch FAQ learning.",
-    // help_center_toggle flips the state, so a repeated call is not a no-op.
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+    // help_center_toggle flips the state, so a repeated call is not a no-op. It can also take a help
+    // center offline, so clients that ask before destructive tools ask here too.
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
   },
   delete: {
     description: "Delete help centers, collections, articles and snippets. Deletes cannot be undone.",
@@ -57,7 +58,7 @@ export function riskActions(domains: readonly Domain[], tool: RiskTool, run: typ
     actions[name] = {
       summary: riskSummary(op, markUndocumented),
       shape: op.input,
-      handler: async (args) => jsonContent(await run(op, args)),
+      handler: async (args) => jsonContent(await run(op, args, { caller: "mcp" })),
     };
   }
   return actions;
