@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.2.0](https://github.com/SpaceParrots/libredesk-mcp/compare/v0.1.0...v0.2.0) (2026-11-03)
+
+
+### Features
+
+* **articles:** add sync from local markdown files and a visibility check for AI assistants ([0b5fbca](https://github.com/SpaceParrots/libredesk-mcp/commit/0b5fbcaa421d4183537f3914e23bb69d88063756))
+* **cli:** add ldesk doctor to check the profile and how the MCP client launches the server ([e597ae3](https://github.com/SpaceParrots/libredesk-mcp/commit/e597ae33e9977eeaa21bc8f0befa7df9c2628fa9))
+* **mcp:** move publishing and deletes into libredesk_publish and libredesk_delete, add bulk ids and short write results ([5bd05f9](https://github.com/SpaceParrots/libredesk-mcp/commit/5bd05f9b49872d3e2476bb5896d7820016ded9fa))
+
+
+### Bug Fixes
+
+* **articles:** read links with only nofollow, noopener or noreferrer rel back as markdown ([d68254c](https://github.com/SpaceParrots/libredesk-mcp/commit/d68254c87034e1c74a0a268c87e667a90adcc37f))
+* **articles:** stop sync from rewriting unchanged articles that contain tables, task lists or html ([4605551](https://github.com/SpaceParrots/libredesk-mcp/commit/4605551cdaad7bc14d1b4f977e690fecec8aa69a))
+* **cli:** ask before doctor starts a server command from the project config of the current folder ([a19782d](https://github.com/SpaceParrots/libredesk-mcp/commit/a19782d6a12bed67ac6677258cada4a040f838a2))
+* **cli:** escape terminal control and bidi characters in text output ([e57ccf2](https://github.com/SpaceParrots/libredesk-mcp/commit/e57ccf234c2518fe028e074ad9d3d6995aeea3db))
+* close the security audit findings and harden the CLI and MCP server ([160010c](https://github.com/SpaceParrots/libredesk-mcp/commit/160010c1b25478e4ec5f6d7b31606f0e9aa053d6))
+* **config:** write the config through an exclusive temp file, refuse a symlinked project file and warn on plain http ([cdd3cbc](https://github.com/SpaceParrots/libredesk-mcp/commit/cdd3cbc1a02b1da5ee6f27e8e0b957c3384234e8))
+* **doctor:** ask before starting entries the current folder can redirect and hide values filled in from env vars ([58e7700](https://github.com/SpaceParrots/libredesk-mcp/commit/58e7700e23d180943426deafb0a8f38125d85a12))
+* **http:** redact the secret from response bodies and before cutting error text ([472b772](https://github.com/SpaceParrots/libredesk-mcp/commit/472b77293b275b414860e968509475a6f2949f44))
+* **mcp:** accept lists of ids in libredesk_publish, whose merged schema typed id as one number ([0f1fcee](https://github.com/SpaceParrots/libredesk-mcp/commit/0f1fceee92699e319e766ae1223bffd2181d3131))
+* **mcp:** route moves and custom code through publish, keep sync inside the server folder and limit profiles ([a9cc1ca](https://github.com/SpaceParrots/libredesk-mcp/commit/a9cc1ca28ca318b4447ce12469adb936a3e2a76e))
+* **mcp:** tell the model that edits to published articles and enabled snippets go live at once ([36e01c4](https://github.com/SpaceParrots/libredesk-mcp/commit/36e01c4d793e6e74f89f2eee9c4bed68039b7631))
+* **request:** reject dot segments that could leave the base URL path ([1bb093b](https://github.com/SpaceParrots/libredesk-mcp/commit/1bb093bc4e378dc1a0d7d14e3b8f54ae4b3052b0))
+
 ## 0.1.0 (2026-11-02)
 
 
