@@ -1,0 +1,43 @@
+name: Bug report
+description: Something in ldesk or the MCP server does not work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Check that nothing you paste contains an API secret or customer data. Security problems go through [private reporting](https://github.com/SpaceParrots/libredesk-mcp/security/advisories/new), not here.
+  - type: input
+    id: ldesk-version
+    attributes:
+      label: ldesk version
+      description: Output of `ldesk --version`
+    validations:
+      required: true
+  - type: input
+    id: libredesk-version
+    attributes:
+      label: LibreDesk version
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where did it happen?
+      options:
+        - CLI
+        - Interactive mode
+        - MCP server
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: The command or MCP action you ran, what you expected and what you got. Add `--json` output if it helps.
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: ldesk doctor output
+      description: Only if the MCP server does not start in your client.
+      render: text

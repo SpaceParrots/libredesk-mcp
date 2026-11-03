@@ -1,0 +1,22 @@
+name: Feature request
+description: Support for another LibreDesk endpoint, or a change to a command or MCP tool
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What do you want to do?
+      description: The task you are trying to get done, and why the current commands or tools do not cover it.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: The command, flag or MCP action you have in mind, and the LibreDesk endpoint behind it if you know it.
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contribution
+      options:
+        - label: I would like to open a pull request for this
